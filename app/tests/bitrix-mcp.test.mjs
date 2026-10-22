@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {BitrixMcp} from '../lib/bitrix-mcp.mjs';
+import {BitrixMcp,createBitrixLoginSender} from '../lib/bitrix-mcp.mjs';
 function fixture(users){
   const calls=[];
   const client=new BitrixMcp({url:'https://mcp.example.test/mcp',token:'FAKE-SECRET',fetcher:async(url,options)=>{
@@ -25,4 +25,10 @@ test('Отсутствие, неоднозначность и отключени
 });
 test('Секрет не появляется в сообщении об ошибке подключения',async()=>{
   const client=new BitrixMcp({url:'https://mcp.example.test/mcp',token:'FAKE-SECRET',fetcher:async()=>new Response('FAKE-SECRET',{status:401})});await assert.rejects(client.connect(),e=>e.status===503&&!e.message.includes('FAKE-SECRET'));
+});
+test('Токен в поле URL не роняет запуск и не попадает в ошибку',async()=>{
+  const secret='FAKE-SECRET-IN-URL';let sender;
+  assert.doesNotThrow(()=>{sender=createBitrixLoginSender({url:secret,token:'FAKE-KEY'});});
+  await assert.rejects(sender({email:'test@example.test',code:'012345'}),error=>error.status===503&&error.message.includes('BITRIX_MCP_URL')&&!String(error.stack).includes(secret)&&!JSON.stringify(error).includes(secret));
+  assert.throws(()=>new BitrixMcp({url:secret,token:'FAKE-KEY'}),error=>!String(error.stack).includes(secret)&&!Object.hasOwn(error,'input'));
 });

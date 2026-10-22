@@ -1,9 +1,10 @@
 const failure=(message,status=503)=>Object.assign(new Error(message),{status});
 export class BitrixMcp{
   constructor({url,token,fetcher=fetch}){
-    const parsed=new URL(url);
-    if(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.search||parsed.hash)throw new Error('Для MCP нужен HTTPS-адрес без параметров и пароля');
-    this.url=parsed.href;this.token=token;this.fetcher=fetcher;this.id=0;this.session=null;this.ready=null;
+    let parsed;
+    try{parsed=new URL(typeof url==='string'?url.trim():'');}catch{throw failure('Проверьте BITRIX_MCP_URL: укажите HTTPS-адрес MCP, а не токен.');}
+    if(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.search||parsed.hash)throw failure('Для MCP нужен HTTPS-адрес без параметров и пароля');
+    this.url=parsed.href;this.token=typeof token==='string'?token.trim():'';this.fetcher=fetcher;this.id=0;this.session=null;this.ready=null;
   }
   async rpc(method,params,notification=false){
     const requestId=++this.id;
@@ -54,5 +55,9 @@ export class BitrixMcp{
   }
 }
 export function createBitrixLoginSender({url=process.env.BITRIX_MCP_URL,token=process.env.MCP_AUTH_TOKEN,fetcher}={}){
-  if(!url||!token)return null;const client=new BitrixMcp({url,token,fetcher});return input=>client.sendLoginCode(input);
+  if(!url?.trim()||!token?.trim())return null;
+  let client;
+  try{client=new BitrixMcp({url,token,fetcher});}
+  catch(error){return async()=>{throw failure(error.message);};}
+  return input=>client.sendLoginCode(input);
 }
