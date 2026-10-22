@@ -7,6 +7,12 @@ import { loadLibrary } from '../lib/domain.mjs';
 import { structuredCall,schemas } from '../lib/ai.mjs';
 import http from 'node:http';
 const library=await loadLibrary(fileURLToPath(new URL('../../02_Инструкция_модели_Нейротренера.md',import.meta.url)));
+test('Ошибка 429 различает баланс и скорость без раскрытия текста провайдера',async()=>{
+  const connection={key:'fixture',base:'https://example.test/v1',model:'fixture',style:'responses'};
+  for(const [code,expected] of [['insufficient_quota',/баланс API/],['rate_limit_exceeded',/скорость запросов/],['unknown',/лимите запросов или баланса/]]){
+    await assert.rejects(()=>structuredCall(connection,'',{},schemas.connection,'check',async()=>({ok:false,status:429,json:async()=>({error:{code,message:'SENSITIVE_PROVIDER_MESSAGE'}})})),error=>{assert.match(error.message,expected);assert(!error.message.includes('SENSITIVE'));return true;});
+  }
+});
 async function fixture(t,call){
   const app=await createApp({library,connection:{key:'',model:'fixture-model'},call});app.server.listen(0,'127.0.0.1');await once(app.server,'listening');
   t.after(()=>new Promise(resolve=>{app.server.closeAllConnections();app.server.close(resolve);}));

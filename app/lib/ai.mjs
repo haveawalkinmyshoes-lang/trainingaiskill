@@ -29,6 +29,12 @@ export async function structuredCall(connection, instruction, data, schema, name
     throw new Error('Не удалось связаться с API. Проверьте адрес сервера и подключение.');
   }
   if (!response.ok) {
+    if(response.status===429){
+      let problem;try{problem=(await response.json())?.error;}catch{}
+      const code=problem?.code||problem?.type;
+      if(['insufficient_quota','billing_hard_limit_reached','billing_not_active'].includes(code))throw new Error('OpenAI: исчерпан баланс API или достигнут лимит расходов проекта. Проверьте Billing и Limits в OpenAI Platform. Подписка ChatGPT не заменяет оплату API. Ход не сохранен.');
+      if(code==='rate_limit_exceeded')throw new Error('OpenAI: временно превышена скорость запросов. Подождите минуту и повторите. Ход не сохранен.');
+    }
     const map={401:'API не принял ключ. Проверьте его в настройках.',403:'Нет доступа к выбранной модели или API.',429:'API сообщил о лимите запросов или баланса. Повторите позже.',400:'API не принял запрос. Проверьте модель и поддержку JSON Schema.',404:'Не найдена модель или адрес API.'};
     throw new Error(map[response.status] || `Ошибка сервиса ИИ (${response.status}). Ход не сохранен.`);
   }
