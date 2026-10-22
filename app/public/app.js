@@ -11,73 +11,17 @@ async function api(path,data){
   if(!response.ok)throw new Error(value.error||'Не удалось выполнить запрос');return value;
 }
 
-const speech={supported:'speechSynthesis' in window&&'SpeechSynthesisUtterance' in window,activeKey:null,utterance:null,lastAutoKey:null};
-function refreshSpeechControls(){
-  for(const button of document.querySelectorAll('[data-speech-key]')){
-    const active=button.dataset.speechKey===speech.activeKey;
-    button.textContent=active?'■ Остановить':'▶ Прослушать';button.setAttribute('aria-pressed',String(active));
-  }
-  $('speech-stop').disabled=!speech.activeKey;
-}
-function stopSpeech(){
-  speech.utterance=null;speech.activeKey=null;
-  if(speech.supported)window.speechSynthesis.cancel();
-  refreshSpeechControls();
-  if(speech.supported)$('speech-status').textContent='Нажмите «Прослушать» под репликой. Голос зависит от браузера и устройства.';
-}
-function speakReply(text,key){
-  if(!speech.supported)return;
-  if(speech.activeKey===key){stopSpeech();return;}
-  stopSpeech();
-  const utterance=new SpeechSynthesisUtterance(text);utterance.lang='ru-RU';utterance.rate=1;
-  const voices=window.speechSynthesis.getVoices();
-  const russian=voices.find(v=>/^ru[-_]RU$/i.test(v.lang))||voices.find(v=>/^ru\b/i.test(v.lang));
-  if(russian)utterance.voice=russian;
-  speech.activeKey=key;speech.utterance=utterance;refreshSpeechControls();
-  $('speech-status').textContent='Читаю реплику собеседника…';
-  utterance.onend=()=>{if(speech.utterance===utterance)stopSpeech();};
-  utterance.onerror=event=>{
-    if(speech.utterance!==utterance)return;
-    stopSpeech();
-    if(!['canceled','interrupted'].includes(event.error))$('speech-status').textContent=event.error==='not-allowed'?'Браузер запретил автоматическую озвучку. Нажмите «Прослушать» под репликой.':'Не удалось озвучить реплику. Проверьте доступность русского голоса в браузере или на устройстве.';
-  };
-  try{window.speechSynthesis.resume();window.speechSynthesis.speak(utterance);}catch{stopSpeech();$('speech-status').textContent='Озвучка недоступна в этом браузере. Попробуйте другой браузер.';}
-}
-function autoSpeakReply(){
-  refreshSpeechControls();
-  const s=state.session;if(!s||s.paused||s.report)return;
-  const index=s.history.findLastIndex(m=>m.role==='assistant'&&m.kind==='character');
-  if(index<0)return;
-  const key=s.id+':'+index;
-  if(speech.lastAutoKey===key)return;
-  speech.lastAutoKey=key;
-  if($('speech-auto').checked&&!document.hidden)speakReply(s.history[index].text,key);
-}
-function initSpeech(){
-  $('speech-auto').disabled=!speech.supported;
-  if(!speech.supported){$('speech-status').textContent='Этот браузер не поддерживает озвучку. Диалог доступен в текстовом виде.';return;}
-  try{$('speech-auto').checked=localStorage.getItem('nt-speech-auto')==='true';}catch{}
-  window.speechSynthesis.getVoices();
-  $('speech-auto').addEventListener('change',()=>{
-    try{localStorage.setItem('nt-speech-auto',String($('speech-auto').checked));}catch{}
-    stopSpeech();if($('speech-auto').checked){speech.lastAutoKey=null;autoSpeakReply();}
-  });
-  $('speech-stop').addEventListener('click',stopSpeech);
-  window.addEventListener('pagehide',stopSpeech);
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopSpeech();});
-}
-
 function busy(value){state.busy=value;document.body.classList.toggle('busy',value);for(const id of ['start-session','send-message','finish-session','hint-button','make-plan','message-input','review-complete'])$(id).disabled=value;if(!value)document.querySelectorAll('.pending-message').forEach(n=>n.remove());}
-function showView(name){if(name!=='chat')stopSpeech();for(const id of ['setup','chat','result'])$(id+'-view').hidden=id!==name;$('new-training').classList.toggle('active',name!=='result');$('show-result').classList.toggle('active',name==='result');window.scrollTo({top:0,behavior:'smooth'});}
-function updateBadge(){const live=state.session?state.session.mode==='ai':state.mode==='ai'&&state.connection?.configured;$('mode-badge').textContent=live?'ИИ подключен':'Демо без ИИ';$('mode-badge').classList.toggle('live',live);$('settings-open').classList.toggle('connected',Boolean(state.connection?.configured));$('connection-caption').textContent=state.connection?.configured?state.connection.model:'Ключ не добавлен';}
+function showView(name){for(const id of ['setup','chat','result'])$(id+'-view').hidden=id!==name;$('new-training').classList.toggle('active',name!=='result');$('show-result').classList.toggle('active',name==='result');window.scrollTo({top:0,behavior:'smooth'});}
+function updateBadge(){const live=state.session?state.session.mode==='ai':state.mode==='ai'&&state.connection?.configured;$('mode-badge').textContent=live?'С ИИ':'По сценарию';$('mode-badge').classList.toggle('live',live);$('settings-open').classList.toggle('connected',Boolean(state.connection?.configured));$('connection-caption').textContent=state.connection?.configured?state.connection.model:'Ключ не добавлен';}
 function setRunMode(mode){
   state.mode=mode==='ai'&&!state.connection?.configured?'demo':mode;
   for(const value of ['demo','ai']){$('mode-'+value).classList.toggle('selected',state.mode===value);$('mode-'+value).setAttribute('aria-pressed',String(state.mode===value));}
   $('mode-ai').disabled=!state.connection?.configured;
   $('mode-ai').title=state.connection?.configured?'Диалог и оценка с ИИ':'ИИ пока не подключен';
-  $('start-session').replaceChildren(document.createTextNode(state.mode==='demo'?'Начать пробный диалог':'Начать тренировку с ИИ'),el('span','','↗'));
-  $('start-note').textContent=state.mode==='demo'?'Пробный диалог работает по шаблону. Оценки условные: здесь можно познакомиться с форматом.':'ИИ оценивает ваши действия по ходу разговора. Оценки вы увидите в итоговом разборе. Максимум — 12 ответов.';
-  $('setup-mode-notice').textContent=state.connection?.configured?'ИИ подключен. Выберите тему, должность и рабочую ситуацию, чтобы начать тренировку.':'Сейчас доступен пробный диалог: ответы по шаблону, оценки условные. Полноценная тренировка станет доступна после подключения ИИ.';
+  $('start-session').replaceChildren(document.createTextNode(state.mode==='demo'?'Начать разговор':'Начать разговор с ИИ'),el('span','','↗'));
+  $('start-note').textContent=state.mode==='demo'?'Ответы по шаблону. Оценки условные.':'Живые ответы ИИ. Разбор — после разговора.';
+  $('setup-mode-notice').textContent=state.connection?.configured?'Доступна тренировка с ИИ.':'Сейчас доступен режим по сценарию. Оценки условные.';
   updateBadge();
 }
 function setSetupStage(stage,{focus=true}={}){
@@ -111,7 +55,7 @@ function showOptions(){
 async function chooseProfile(profile){
   state.profile=profile;state.scenario=null;$('position-input').value=profile.title;$('position-clear').hidden=false;closeOptions();
   const preview=$('profile-preview');preview.replaceChildren(el('h3','',profile.title),el('div','profile-family',profile.family+' · '+profile.job_level));
-  const chips=el('div','chips');for(const c of profile.competencies){const chip=el('span','chip',c.name);chip.append(el('strong','',fmt(c.target)));chips.append(chip);}preview.append(chips);
+  preview.append(el('p','','Ситуации подбираются по вашей должности.'));
   $('scenario-detail').hidden=true;stepper();
   const topic=state.topic,profileId=profile.id;
   try{const data=await api('scenarios?'+new URLSearchParams({topic,profile:profileId}));if(state.topic!==topic||state.profile?.id!==profileId)return;state.scenarios=data.scenarios;renderScenarios();setSetupStage(3);}
@@ -119,23 +63,47 @@ async function chooseProfile(profile){
 }
 function renderScenarios(){
   const box=$('scenario-list');box.replaceChildren();box.hidden=Boolean(state.scenario);$('change-scenario').hidden=!state.scenario;$('scenario-section').hidden=state.setupStage!==3;$('scenario-count').textContent=`Подходящих ситуаций: ${state.scenarios.length}`;
-  for(const [index,s] of state.scenarios.entries()){const button=el('button','scenario-card');button.dataset.scenario=s.id;button.setAttribute('aria-pressed',String(state.scenario?.id===s.id));button.classList.toggle('selected',state.scenario?.id===s.id);button.append(el('span','id-label','Ситуация '+(index+1)),el('h3','',s.title),el('p','',s.brief));const bottom=el('div','scenario-bottom');bottom.append(el('span','','Посмотреть условия и начать'),el('span','','↗'));button.append(bottom);button.addEventListener('click',()=>chooseScenario(s));box.append(button);}
+  for(const [index,s] of state.scenarios.entries()){const button=el('button','scenario-card');button.dataset.scenario=s.id;button.setAttribute('aria-pressed',String(state.scenario?.id===s.id));button.classList.toggle('selected',state.scenario?.id===s.id);button.append(el('span','id-label','Ситуация '+(index+1)),el('h3','',s.title),el('p','',s.brief));const bottom=el('div','scenario-bottom');bottom.append(el('span','','Выбрать ситуацию'),el('span','','↗'));button.append(bottom);button.addEventListener('click',()=>chooseScenario(s));box.append(button);}
   if(!state.scenarios.length)box.append(el('p','small-note','По этой теме нет сценария с компетенциями вашего профиля. Выберите другую тему; профиль автоматически не меняется.'));
 }
-function chooseScenario(s){state.scenario=s;renderScenarios();$('scenario-detail').hidden=false;$('detail-id').textContent='ПОДГОТОВКА К РАЗГОВОРУ';$('detail-role').textContent=state.profile.title+'. Действуйте в рамках своих рабочих полномочий.';$('detail-character').textContent=s.character;$('detail-title').textContent=s.title;$('detail-brief').textContent=s.brief;const chips=$('detail-competencies');chips.replaceChildren();for(const c of s.competencies){const chip=el('span','chip',c.name);chip.append(el('strong','',`цель ${fmt(c.target)}`));chips.append(chip);}stepper();$('scenario-detail').scrollIntoView({behavior:'smooth',block:'start'});}
-function acceptSession(session){if(state.session?.id!==session.id||session.paused||session.report)stopSpeech();state.session=session;sessionStorage.setItem('nt-current-session',session.id);updateBadge();$('show-result').disabled=!session.report;}
+function chooseScenario(s){state.scenario=s;renderScenarios();$('scenario-detail').hidden=false;$('detail-id').textContent='ВАША СИТУАЦИЯ';$('detail-role').textContent=state.profile.title;$('detail-character').textContent=s.character;$('detail-title').textContent=s.title;$('detail-brief').textContent=s.brief;const chips=$('detail-competencies');chips.replaceChildren();for(const c of s.competencies){const chip=el('span','chip',c.name);chip.append(el('strong','',`цель ${fmt(c.target)}`));chips.append(chip);}stepper();$('scenario-detail').scrollIntoView({behavior:'smooth',block:'start'});}
+function acceptSession(session){state.session=session;sessionStorage.setItem('nt-current-session',session.id);updateBadge();$('show-result').disabled=!session.report;}
 async function startSession(){
   if(state.busy)return;if(!state.topic||!state.profile||!state.scenario)return toast('Выберите тему, должность и ситуацию');
   if(state.mode==='ai'&&!state.connection.configured){openSettings();return;}
   busy(true);try{const s=await api('sessions',{topic:state.topic,profileId:state.profile.id,scenarioId:state.scenario.id,mode:state.mode,difficulty:$('difficulty').value});acceptSession(s);$('message-input').value='';state.pending=null;renderChat();showView('chat');if(!matchMedia('(max-width:680px)').matches)$('message-input').focus({preventScroll:true});}catch(error){toast(error.message);}finally{busy(false);}
 }
-function messageNode(message,index){const row=el('div','message-row '+(message.role==='user'?'user':['hint','notice'].includes(message.kind)?'hint':'character'));const content=el('div','message-content');content.append(el('div','message-label',message.role==='user'?'Вы':message.kind==='hint'?'Подсказка тренера':message.kind==='notice'?'Тренировка':state.session.scenario.character),el('div','message-text',message.text));if(message.role==='assistant'&&message.kind==='character'&&speech.supported){const button=el('button','speech-reply','▶ Прослушать');button.type='button';button.dataset.speechKey=state.session.id+':'+index;button.setAttribute('aria-pressed',String(button.dataset.speechKey===speech.activeKey));button.setAttribute('aria-label','Озвучить реплику собеседника');button.addEventListener('click',()=>speakReply(message.text,button.dataset.speechKey));content.append(button);}row.append(el('span','avatar',message.role==='user'?'Вы':message.kind==='hint'?'✧':'Н'),content);return row;}
+
+function portrait(character,small=false){
+  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
+  svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('aria-hidden','true');svg.classList.add(small?'portrait-small':'portrait');
+  const seed=[...character].reduce((n,c)=>n+c.charCodeAt(0),0),variant=seed%3;
+  const make=(tag,attrs)=>{const node=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))node.setAttribute(k,v);svg.append(node);return node;};
+  const colors=[['#e9e0d6','#344d4c','#402f2d'],['#dfe8e0','#3b4964','#392c24'],['#e8e2ed','#5e4863','#514039']][variant];
+  make('rect',{width:'100',height:'100',rx:'24',fill:colors[0]});
+  if(variant===2)make('path',{d:'M24 57V35C24 5 76 7 76 36V64H24',fill:colors[2]});
+  make('path',{d:'M10 100C12 64 88 64 90 100Z',fill:colors[1]});
+  make('path',{d:'M41 59H59V74Q50 85 41 74Z',fill:'#dca98b'});
+  make('ellipse',{cx:'50',cy:'42',rx:'22',ry:'27',fill:'#ebbea0'});
+  make('path',{d:variant===1?'M28 42C18 14 46 5 65 15C78 20 77 36 72 41L65 28Q45 34 34 27Z':'M27 42C19 21 34 10 53 12C73 12 80 30 71 44L67 29Q45 22 32 37Z',fill:colors[2]});
+  make('path',{d:'M37 44h5M58 44h5',stroke:'#3c3030','stroke-width':'2.5','stroke-linecap':'round'});
+  make('path',{d:'M50 46l-2 9h5',fill:'none',stroke:'#c28a70','stroke-width':'1.5','stroke-linecap':'round'});
+  make('path',{d:'M43 61Q50 65 57 60',fill:'none',stroke:'#915d52','stroke-width':'2','stroke-linecap':'round'});
+  make('path',{d:'M36 77L46 88L50 80L55 88L64 77',fill:'#fff9ee'});
+  return svg;
+}
+function renderPerson(character){
+  const parts=character.split(',');$('person-name').textContent=parts[0].trim();$('person-role').textContent=parts.slice(1).join(',').trim()||'Ваш собеседник';
+  $('person-avatar').replaceChildren(portrait(character));
+}
+
+function messageNode(message,index){const row=el('div','message-row '+(message.role==='user'?'user':['hint','notice'].includes(message.kind)?'hint':'character'));const content=el('div','message-content');content.append(el('div','message-label',message.role==='user'?'Вы':message.kind==='hint'?'Подсказка тренера':message.kind==='notice'?'Тренировка':state.session.scenario.character),el('div','message-text',message.text));row.append(message.role==='assistant'&&message.kind==='character'?portrait(state.session.scenario.character,true):el('span','avatar',message.role==='user'?'Вы':'✧'),content);return row;}
 function scoreNode(step){const box=el('div','score-card');const heading=el('div','score-card-heading');heading.append(el('span','',`Оценка шага ${step.turn}`));const value=el('strong','',fmt(step.score));value.append(el('small','','/ 3'));heading.append(value);box.append(heading);for(const r of step.scores){const c=state.session.scenario.competencies.find(c=>c.id===r.id);const p=el('p','score-detail');p.append(el('strong','',`${c?.name||''} — ${fmt(r.score)} · цель ${fmt(c?.target)}`),document.createTextNode(' '+r.reason));box.append(p);}if(step.demo)box.append(el('div','demo-caption','Условная оценка демонстрации'));return box;}
 function renderMessages(optimistic){const s=state.session,box=$('messages');box.replaceChildren();let turn=0;for(const [index,m] of s.history.entries()){box.append(messageNode(m,index));if(m.role==='user'){const step=s.steps[turn++];if(step)box.append(scoreNode(step));}}if(optimistic)box.append(messageNode({role:'user',text:optimistic}));if(state.busy)box.append(el('div','pending-message','Собеседник обдумывает ответ…'));}
-function renderChat(){const s=state.session;$('chat-topic').textContent=s.scenario.topic;$('chat-title').textContent=s.scenario.title;$('chat-position').textContent=s.profile.title+' · '+s.difficulty+' уровень';$('chat-brief').textContent=s.scenario.brief;$('chat-role').textContent='Вы: '+s.profile.title+'. Собеседник: '+s.scenario.character;$('chat-guidance').textContent=s.steps.length?'Продолжайте разговор: уточняйте и договаривайтесь. Когда будете готовы, завершите его кнопкой вверху.':'Собеседник уже начал разговор. Прочитайте его сообщение ниже и напишите свой ответ. Если не знаете, с чего начать, нажмите «Подсказка». ';$('chat-demo-note').hidden=s.mode!=='demo';const stages=$('dialogue-stages');stages.replaceChildren();const passed=new Set(s.steps.flatMap(x=>x.stageIds));for(const step of s.stages){const li=el('li',passed.has(step.stage)?'done':'');li.append(el('span','stage-number',passed.has(step.stage)?'✓':String(step.stage)),el('span','',step.goal));stages.append(li);}const comps=$('chat-competencies');comps.replaceChildren();for(const c of s.scenario.competencies){const item=el('div','competency-mini');item.append(el('span','',c.name));const p=el('small','','Цель должности ');p.append(el('strong','',fmt(c.target)));item.append(p);comps.append(item);}renderMessages();$('message-input').placeholder=s.paused?'Напишите «Продолжить», когда будете готовы…':'Ответьте собеседнику своими словами…';$('message-form').hidden=s.complete;$('chat-complete').hidden=!s.complete;$('finish-session').textContent=s.complete?'Получить разбор':'Завершить разговор и получить разбор';autoSpeakReply();}
-async function sendMessage(event){event.preventDefault();if(state.busy||!state.session)return;const message=$('message-input').value.trim();if(!message)return;if(/^(стоп|завершить|закончить)[.!]?$/i.test(message)){await finishSession();return;}stopSpeech();const requestId=state.pending?.message===message?state.pending.requestId:crypto.randomUUID();state.pending={message,requestId};busy(true);renderMessages(message);try{const s=await api(`sessions/${state.session.id}/turn`,{message,requestId});acceptSession(s);$('message-input').value='';state.pending=null;renderChat();}catch(error){toast(error.message);renderMessages();}finally{busy(false);const pending=$('messages').querySelector('.pending-message');pending?.remove();if(!state.session.complete)$('message-input').focus();}$('message-form').scrollIntoView({behavior:'smooth',block:'end'});}
+function renderChat(){const s=state.session;$('chat-topic').textContent=s.scenario.topic;$('chat-title').textContent=s.scenario.title;$('chat-position').textContent=s.profile.title+' · '+s.difficulty+' уровень';$('chat-brief').textContent=s.scenario.brief;$('chat-role').textContent='Вы: '+s.profile.title+'. Собеседник: '+s.scenario.character;$('chat-guidance').textContent=s.steps.length?'':'Прочитайте реплику и ответьте своими словами.';$('chat-guidance').hidden=s.steps.length>0;renderPerson(s.scenario.character);$('chat-demo-note').hidden=s.mode!=='demo';const stages=$('dialogue-stages');stages.replaceChildren();const passed=new Set(s.steps.flatMap(x=>x.stageIds));for(const step of s.stages){const li=el('li',passed.has(step.stage)?'done':'');li.append(el('span','stage-number',passed.has(step.stage)?'✓':String(step.stage)),el('span','',step.goal));stages.append(li);}const comps=$('chat-competencies');comps.replaceChildren();for(const c of s.scenario.competencies){const item=el('div','competency-mini');item.append(el('span','',c.name));const p=el('small','','Цель должности ');p.append(el('strong','',fmt(c.target)));item.append(p);comps.append(item);}renderMessages();$('message-input').placeholder=s.paused?'Напишите «Продолжить», когда будете готовы…':'Ответьте собеседнику своими словами…';$('message-form').hidden=s.complete;$('chat-complete').hidden=!s.complete;$('finish-session').textContent=s.complete?'Получить разбор':'Завершить разговор';}
+async function sendMessage(event){event.preventDefault();if(state.busy||!state.session)return;const message=$('message-input').value.trim();if(!message)return;if(/^(стоп|завершить|закончить)[.!]?$/i.test(message)){await finishSession();return;}const requestId=state.pending?.message===message?state.pending.requestId:crypto.randomUUID();state.pending={message,requestId};busy(true);renderMessages(message);try{const s=await api(`sessions/${state.session.id}/turn`,{message,requestId});acceptSession(s);$('message-input').value='';state.pending=null;renderChat();}catch(error){toast(error.message);renderMessages();}finally{busy(false);const pending=$('messages').querySelector('.pending-message');pending?.remove();if(!state.session.complete)$('message-input').focus();}$('message-form').scrollIntoView({behavior:'smooth',block:'end'});}
 async function hint(){if(state.busy)return;busy(true);try{acceptSession(await api(`sessions/${state.session.id}/hint`,{}));renderChat();}catch(error){toast(error.message);}finally{busy(false);$('messages').querySelector('.pending-message')?.remove();}}
-async function finishSession(){if(state.busy)return;stopSpeech();busy(true);const b=$('finish-session'),previous=b.textContent;b.textContent='Составляю разбор…';try{acceptSession(await api(`sessions/${state.session.id}/finalize`,{}));renderResult();showView('result');}catch(error){toast(error.message);}finally{busy(false);b.textContent=previous;}}
+async function finishSession(){if(state.busy)return;busy(true);const b=$('finish-session'),previous=b.textContent;b.textContent='Составляю разбор…';try{acceptSession(await api(`sessions/${state.session.id}/finalize`,{}));renderResult();showView('result');}catch(error){toast(error.message);}finally{busy(false);b.textContent=previous;}}
 function drawChart(){const data=state.session.steps.filter(s=>s.score!==null),box=$('score-chart');box.replaceChildren();if(!data.length)return;const ns='http://www.w3.org/2000/svg';const make=(tag,attrs)=>{const node=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))node.setAttribute(k,String(v));return node;};const svg=make('svg',{viewBox:'0 0 500 68',class:'score-chart',role:'img','aria-label':'Оценки последовательных шагов'});for(const y of [8,33,58])svg.append(make('line',{x1:6,x2:494,y1:y,y2:y}));const points=data.map((s,i)=>({x:data.length===1?250:8+i*484/(data.length-1),y:58-s.score/3*50}));svg.append(make('path',{d:points.map((p,i)=>(i?'L':'M')+p.x+','+p.y).join(' ')}));for(const p of points)svg.append(make('circle',{cx:p.x,cy:p.y,r:3.3}));box.append(svg,el('div','chart-caption','Оценки шагов · 0–3. Итог учитывает исправления и весь диалог.'));}
 function renderResult(){
   const s=state.session,r=s.report;$('result-context').textContent=s.scenario.title+' · '+s.profile.title;$('result-demo-note').hidden=s.mode!=='demo';$('result-total').textContent=fmt(r.total);$('result-coverage').textContent=`Оценено ${r.coverage.observed} из ${r.coverage.profile} компетенций профиля`;$('outcome-label').textContent={achieved:'Договоренность достигнута',partial:'Часть вопросов еще открыта',not_achieved:'Нужна следующая попытка'}[r.outcome];$('result-summary-text').textContent=r.summary;drawChart();
@@ -159,13 +127,11 @@ $('mode-demo').addEventListener('click',()=>setRunMode('demo'));$('mode-ai').add
 $('settings-open').addEventListener('click',openSettings);$('settings-close').addEventListener('click',()=>$('settings-dialog').close());$('settings-form').addEventListener('submit',async event=>{event.preventDefault();$('save-settings').disabled=true;try{await saveSettings({close:true});toast('Подключение сохранено для новых тренировок');}catch(error){toast(error.message);}finally{$('save-settings').disabled=false;}});$('test-connection').addEventListener('click',async()=>{const b=$('test-connection');b.disabled=true;$('connection-result').classList.remove('error');$('connection-result').textContent='Проверяю соединение…';try{await saveSettings();await api('connection',{});$('connection-result').textContent='Соединение установлено. Можно начать тренировку с ИИ.';}catch(error){$('connection-result').classList.add('error');$('connection-result').textContent=error.message;}finally{b.disabled=false;}});
 async function init(){try{state.catalog=await api('bootstrap');state.csrf=state.catalog.csrf;state.connection=state.catalog.connection;state.hosted=Boolean(state.catalog.hosting?.managed);setRunMode(state.connection.configured?'ai':'demo');const saved=sessionStorage.getItem('nt-current-session');if(saved){try{const s=await api('sessions/'+saved);acceptSession(s);if(s.report){renderResult();showView('result');}else{renderChat();showView('chat');}}catch{sessionStorage.removeItem('nt-current-session');}}}catch(error){toast(location.protocol==='file:'?'Откройте «Запустить Нейротренер.cmd», затем http://127.0.0.1:8765. Для работы с ИИ нужен локальный сервер.':error.message);}}
 $('change-scenario').addEventListener('click',()=>{state.scenario=null;$('scenario-detail').hidden=true;renderScenarios();setSetupStage(3);});
-$('begin-setup').addEventListener('click',()=>{const h=$('topic-section').querySelector('h2');h.focus({preventScroll:true});h.scrollIntoView({behavior:'smooth',block:'start'});});
 $('review-complete').addEventListener('click',finishSession);
 $('goto-topic').addEventListener('click',()=>setSetupStage(1));
 $('goto-position').addEventListener('click',()=>{setSetupStage(2);$('position-input').focus();});
 $('goto-scenario').addEventListener('click',()=>setSetupStage(3));
 $('setup-back').addEventListener('click',()=>setSetupStage(Math.max(1,state.setupStage-1)));
 $('jump-reflection').addEventListener('click',()=>{const section=$(state.session.plan?'monthly-section':'reflection-section');section.scrollIntoView({behavior:'smooth',block:'start'});if(!state.session.plan)$('reflection-one').focus({preventScroll:true});});
-initSpeech();
 stepper();
 await init();
