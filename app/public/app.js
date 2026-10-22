@@ -13,7 +13,7 @@ async function api(path,data){
 
 function busy(value){state.busy=value;document.body.classList.toggle('busy',value);for(const id of ['start-session','send-message','finish-session','hint-button','make-plan','message-input','review-complete'])$(id).disabled=value;if(!value)document.querySelectorAll('.pending-message').forEach(n=>n.remove());}
 function showView(name){for(const id of ['setup','chat','result'])$(id+'-view').hidden=id!==name;$('new-training').classList.toggle('active',name!=='result');$('show-result').classList.toggle('active',name==='result');window.scrollTo({top:0,behavior:'smooth'});}
-function updateBadge(){const live=state.session?state.session.mode==='ai':state.mode==='ai'&&state.connection?.configured;$('mode-badge').textContent=live?'С ИИ':'По сценарию';$('mode-badge').classList.toggle('live',live);$('settings-open').classList.toggle('connected',Boolean(state.connection?.configured));$('connection-caption').textContent=state.connection?.configured?state.connection.model:'Ключ не добавлен';}
+function updateBadge(){$('settings-open').classList.toggle('connected',Boolean(state.connection?.configured));$('connection-caption').textContent=state.connection?.configured?state.connection.model:'Ключ не добавлен';}
 function setRunMode(mode){
   state.mode=mode==='ai'&&!state.connection?.configured?'demo':mode;
   for(const value of ['demo','ai']){$('mode-'+value).classList.toggle('selected',state.mode===value);$('mode-'+value).setAttribute('aria-pressed',String(state.mode===value));}
@@ -21,7 +21,8 @@ function setRunMode(mode){
   $('mode-ai').title=state.connection?.configured?'Диалог и оценка с ИИ':'ИИ пока не подключен';
   $('start-session').replaceChildren(document.createTextNode(state.mode==='demo'?'Начать разговор':'Начать разговор с ИИ'),el('span','','↗'));
   $('start-note').textContent=state.mode==='demo'?'Ответы по шаблону. Оценки условные.':'Живые ответы ИИ. Разбор — после разговора.';
-  $('setup-mode-notice').textContent=state.connection?.configured?'Доступна тренировка с ИИ.':'Сейчас доступен режим по сценарию. Оценки условные.';
+  $('setup-mode-notice').hidden=Boolean(state.connection?.configured);
+  $('setup-mode-notice').textContent=state.connection?.configured?'':'Сейчас доступен режим по сценарию. Оценки условные.';
   updateBadge();
 }
 function setSetupStage(stage,{focus=true}={}){
