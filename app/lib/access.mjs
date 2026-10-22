@@ -9,9 +9,21 @@ function nameVariants(fullName){
   if(parts.length===3)variants.add([parts[1],parts[2],parts[0]].join(' '));
   return variants;
 }
-export async function loadEmployeeAllowlist(){
-  const source=process.env.EMPLOYEE_ALLOWLIST_FILE?
-    await readFile(process.env.EMPLOYEE_ALLOWLIST_FILE,'utf8'):process.env.EMPLOYEE_ALLOWLIST_JSON;
+export async function loadEmployeeAllowlist({env=process.env,readText=readFile}={}){
+  let source=env.EMPLOYEE_ALLOWLIST_FILE?
+    await readText(env.EMPLOYEE_ALLOWLIST_FILE,'utf8'):env.EMPLOYEE_ALLOWLIST_JSON;
+  if(!source){
+    for(const filename of ['/etc/secrets/employees.json','/etc/secrets/employees.env']){
+      let secret;
+      try{secret=await readText(filename,'utf8');}catch(error){if(error.code==='ENOENT'||error.code==='ENOTDIR')continue;throw error;}
+      secret=secret.replace(/^\uFEFF/,'');
+      if(filename.endsWith('.env')){
+        source=secret.match(/^EMPLOYEE_ALLOWLIST_JSON=(.*)$/m)?.[1]?.trim();
+        if(!source)throw new Error('В секретном файле employees.env не найден EMPLOYEE_ALLOWLIST_JSON');
+      }else source=secret;
+      break;
+    }
+  }
   if(!source)return [];
   const records=JSON.parse(source);
   if(!Array.isArray(records))throw new Error('Список допуска сотрудников должен быть массивом JSON');

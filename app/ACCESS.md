@@ -14,6 +14,8 @@
 
 Вместо переменной со списком можно использовать Secret File `employees.json` и `EMPLOYEE_ALLOWLIST_FILE=/etc/secrets/employees.json`. В production без списка доступ закрыт. Без подключения к MCP отправить код нельзя; вход по одному ФИО в production не разрешается.
 
+Если явные переменные списка не заданы, приложение автоматически ищет `/etc/secrets/employees.json`, затем `/etc/secrets/employees.env`. Второй вариант читает строку `EMPLOYEE_ALLOWLIST_JSON=...` из подготовленного env-файла. Это позволяет добавить файл через Secret Files без дополнительных переменных.
+
 Для подготовки списка: `scripts/import-employees.py путь_к_файлу.xlsx --require-email`. Скрипт распознает заголовки «ФИО», «Имя пользователя», «Email», проверяет адреса, одинаковые имена и общие адреса. Результаты в `app/private/`: JSON для Secret File и env-файл для Add from .env в Render. Excel, список сотрудников и реальные ключи исключены из Git и не обслуживаются HTTP-сервером.
 
 ## MCP и отправитель

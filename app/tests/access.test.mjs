@@ -1,8 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
-import {EmployeeAccess,normalizeFullName} from '../lib/access.mjs';
+import {EmployeeAccess,normalizeFullName,loadEmployeeAllowlist} from '../lib/access.mjs';
 import {createApp} from '../server.mjs';
+test('Список на Render читается из переменной или Secret File; явная настройка имеет приоритет',async()=>{
+  const records=[{fullName:'Тестов Тест',email:'test@example.test'}],json=JSON.stringify(records);
+  const missing=()=>{throw Object.assign(new Error('missing'),{code:'ENOENT'});};
+  assert.deepEqual(await loadEmployeeAllowlist({env:{EMPLOYEE_ALLOWLIST_JSON:json},readText:missing}),records);
+  for(const filename of ['/etc/secrets/employees.json','/etc/secrets/employees.env'])assert.deepEqual(await loadEmployeeAllowlist({env:{},readText:async path=>path===filename?(path.endsWith('.env')?'\uFEFFEMPLOYEE_ALLOWLIST_JSON='+json+'\n':json):missing()}),records);
+  assert.deepEqual(await loadEmployeeAllowlist({env:{EMPLOYEE_ALLOWLIST_FILE:'/custom.json',EMPLOYEE_ALLOWLIST_JSON:'[]'},readText:async path=>{assert.equal(path,'/custom.json');return json;}}),records);
+  await assert.rejects(loadEmployeeAllowlist({env:{EMPLOYEE_ALLOWLIST_JSON:'invalid'},readText:async()=>json}));
+  await assert.rejects(loadEmployeeAllowlist({env:{},readText:async path=>path.endsWith('.env')?'WRONG_KEY=[]':missing()}),/не найден/);
+});
 test('Сверка полного ФИО: пробелы, регистр, ё; нет поиска по части имени',()=>{
   const access=new EmployeeAccess(['Тестов Артём Тестович']);
   assert.equal(normalizeFullName(' ТЕСТОВ  Артём Тестович '),'тестов артем тестович');
