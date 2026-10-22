@@ -26,7 +26,7 @@ test('API не впускает по одному ФИО; код только д
   app.server.listen(0,'127.0.0.1');await once(app.server,'listening');t.after(()=>{app.server.closeAllConnections();app.server.close();});
   const base='http://127.0.0.1:'+app.server.address().port;const first=await fetch(base+'/api/auth/status');let cookie=first.headers.get('set-cookie').split(';')[0],csrf=(await first.json()).csrf;
   const post=(route,data)=>fetch(base+'/api/'+route,{method:'POST',headers:{Cookie:cookie,Origin:base,'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(data)});
-  const requested=await post('auth/login',{fullName:person.fullName,email:'attacker@example.test'});assert.equal(requested.status,200);assert((await requested.json()).verificationRequired);assert.equal(mail.email,person.email);
+  const requested=await post('auth/login',{fullName:'Тест Тестов Тестович',email:'attacker@example.test'});assert.equal(requested.status,200);assert((await requested.json()).verificationRequired);assert.equal(mail.email,person.email);
   assert.equal((await fetch(base+'/api/bootstrap',{headers:{Cookie:cookie}})).status,401);
   assert.equal((await post('auth/verify',{code:'wrong'})).status,401);
   const verified=await post('auth/verify',{code:mail.code});assert.equal(verified.status,200);const value=await verified.json();assert.deepEqual(value.employee,{fullName:person.fullName});const next=verified.headers.get('set-cookie').split(';')[0];assert.notEqual(cookie,next);cookie=next;csrf=value.csrf;

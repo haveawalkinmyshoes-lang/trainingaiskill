@@ -16,7 +16,7 @@ try{
   await page.goto(origin);await page.locator('#login-view').waitFor({state:'visible'});
   assert.equal(await page.locator('.login-steps li').count(),3);
   await page.screenshot({path:'../.work/ui/12-bitrix-login.png',fullPage:true});
-  await page.locator('#login-full-name').fill('Тестов Тест Тестович');await page.locator('#login-submit').click();
+  await page.locator('#login-full-name').fill('Тест Тестов Тестович');await page.locator('#login-submit').click();
   await page.locator('#login-code-fields').waitFor({state:'visible'});assert(await page.locator('main').isHidden());assert(await page.locator('#login-resend').isDisabled());
   await page.screenshot({path:'../.work/ui/13-bitrix-code.png',fullPage:true});
   await page.locator('#login-code').fill(delivered.code);await page.locator('#login-submit').click();

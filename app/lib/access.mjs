@@ -3,6 +3,12 @@ import {readFile} from 'node:fs/promises';
 export function normalizeFullName(value){
   return typeof value==='string'?value.normalize('NFKC').trim().replace(/\s+/gu,' ').toLocaleLowerCase('ru').replaceAll('ё','е'):'';
 }
+function nameVariants(fullName){
+  const parts=normalizeFullName(fullName).split(' '),variants=new Set([parts.join(' ')]);
+  if(parts.length===2||parts.length===3)variants.add([parts[1],parts[0],...parts.slice(2)].join(' '));
+  if(parts.length===3)variants.add([parts[1],parts[2],parts[0]].join(' '));
+  return variants;
+}
 export async function loadEmployeeAllowlist(){
   const source=process.env.EMPLOYEE_ALLOWLIST_FILE?
     await readFile(process.env.EMPLOYEE_ALLOWLIST_FILE,'utf8'):process.env.EMPLOYEE_ALLOWLIST_JSON;
@@ -13,7 +19,7 @@ export async function loadEmployeeAllowlist(){
 }
 export class EmployeeAccess{
   constructor(records,{required=false,ttlMs=8*60*60*1000}={}){
-    this.required=required||records.length>0;this.ttlMs=ttlMs;this.people=new Map();this.sessions=new Map();this.attempts=new Map();
+    this.required=required||records.length>0;this.ttlMs=ttlMs;this.people=new Map();this.nameIndex=new Map();this.sessions=new Map();this.attempts=new Map();
     for(const record of records){
       const fullName=typeof record==='string'?record:record?.fullName;
       if(record?.enabled===false)continue;
@@ -23,6 +29,10 @@ export class EmployeeAccess{
       if(email&&!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email))throw new Error('Некорректная почта в списке допуска');
       if(this.people.has(key))throw new Error('Повторяющееся ФИО в списке допуска: используйте уникальные полные имена');
       this.people.set(key,{fullName:display,...(email?{email}:{})});
+      for(const variant of nameVariants(display)){
+        if(!this.nameIndex.has(variant))this.nameIndex.set(variant,new Set());
+        this.nameIndex.get(variant).add(key);
+      }
     }
   }
   current(owner,now=Date.now()){
@@ -38,7 +48,9 @@ export class EmployeeAccess{
     if(!attempts){if(this.attempts.size>=5000)throw Object.assign(new Error('Слишком много попыток входа. Попробуйте позже.'),{status:429});attempts={count:0,until:now+10*60*1000};this.attempts.set(owner,attempts);}
     if(++attempts.count>10)throw Object.assign(new Error('Слишком много попыток входа. Повторите через 10 минут.'),{status:429});
     const key=typeof fullName==='string'&&fullName.length<=200?normalizeFullName(fullName):'';
-    const person=this.people.get(key);
+    const matches=this.nameIndex.get(key);
+    if(matches?.size>1)throw Object.assign(new Error('ФИО неоднозначно. Укажите полное ФИО с отчеством или обратитесь к организатору.'),{status:400});
+    const person=matches?.size===1?this.people.get([...matches][0]):null;
     if(!person)throw Object.assign(new Error('Доступ не найден. Введите полное ФИО как в списке сотрудников или обратитесь к организатору.'),{status:401});
     return {...person};
   }

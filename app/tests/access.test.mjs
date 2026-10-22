@@ -19,6 +19,20 @@ test('Допуск истекает и не зависит от запуска �
   for(let n=0;n<10;n++)assert.throws(()=>access.login('b','нет',2000),/Доступ не найден/);
   assert.throws(()=>access.login('b','Тестов Тест Тестович',2000),/Слишком много/);
 });
+test('Имя и фамилия в обоих порядках сохраняют ФИО и получателя из списка',()=>{
+  const access=new EmployeeAccess([{fullName:'Тестов Артём',email:'test@example.test'}]);
+  for(const name of ['Тестов Артём','Артём Тестов','  АРТЕМ   ТЕСТОВ '])assert.deepEqual(access.login(name,name),{fullName:'Тестов Артём',email:'test@example.test'});
+  assert.throws(()=>access.login('x','Артём'),/Доступ не найден/);
+  const full=new EmployeeAccess(['Тестов Артём Тестович']);
+  for(const name of ['Артём Тестов Тестович','Артём Тестович Тестов'])assert.equal(full.login(name,name).fullName,'Тестов Артём Тестович');
+  assert.throws(()=>full.login('x','Артём Тестов'),/Доступ не найден/);
+});
+test('Неоднозначные перестановки не выбирают получателя, отключенные записи не мешают',()=>{
+  const records=[{fullName:'Тестов Артём',email:'first@example.test'},{fullName:'Артём Тестов',email:'second@example.test'}];
+  const access=new EmployeeAccess(records);
+  for(const name of ['Тестов Артём','Артём Тестов'])assert.throws(()=>access.login(name,name),e=>e.status===400&&e.message.includes('неоднозначно'));
+  const active=new EmployeeAccess([records[0],{...records[1],enabled:false}]);assert.equal(active.login('x','Артём Тестов').email,'first@example.test');
+});
 test('Без входа закрыты каталог, сценарии, сессии и платный API; вход и выход меняют доступ',async t=>{
   let paidCalls=0;
   const app=await createApp({accessRequired:true,employeeAllowlist:['Тестов Тест Тестович'],connection:{key:'FAKE'},call:async()=>{paidCalls++;return {text:'Подсказка'};}});
