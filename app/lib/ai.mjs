@@ -16,8 +16,8 @@ export async function structuredCall(connection, instruction, data, schema, name
   const format = {type:'json_schema',name,strict:true,schema};
   const messages = [{role:'system',content:instruction},{role:'user',content:JSON.stringify(data)}];
   const chat = connection.style === 'chat';
-  const body = chat ? {model:connection.model,messages,response_format:{type:'json_schema',json_schema:{name,strict:true,schema}}} :
-    {model:connection.model,input:messages,store:false,text:{format}};
+  const body = chat ? {model:connection.model,messages,max_completion_tokens:3000,response_format:{type:'json_schema',json_schema:{name,strict:true,schema}}} :
+    {model:connection.model,input:messages,store:false,max_output_tokens:3000,text:{format}};
   let response;
   try {
     response = await fetchImpl(connection.base.replace(/\/$/,'')+(chat?'/chat/completions':'/responses'), {

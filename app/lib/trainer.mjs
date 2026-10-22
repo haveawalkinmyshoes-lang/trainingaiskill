@@ -6,6 +6,9 @@ const quote = value => value.slice(0,500);
 export class Trainer {
   constructor(library, call=structuredCall) { this.library=library; this.call=call; this.sessions=new Map(); }
   start(owner, input, connection) {
+    this.sweep();
+    if(this.sessions.size>=200)throw Object.assign(new Error('Сейчас слишком много тренировок. Попробуйте позже.'),{status:429});
+    if([...this.sessions.values()].filter(s=>s.owner===owner&&!s.complete).length>=3)throw Object.assign(new Error('У вас уже три открытых диалога. Сначала завершите один из них.'),{status:429});
     const {config}=this.library;
     const context=route(config,input.topic,input.profileId,input.scenarioId);
     if(!['demo','ai'].includes(input.mode)) throw new Error('Выберите демо или ИИ');
@@ -22,7 +25,7 @@ export class Trainer {
     return this.view(s);
   }
   sweep() { for(const [id,s] of this.sessions) if(Date.now()-s.createdAt>12*60*60*1000&&!s.busy)this.sessions.delete(id); }
-  get(id,owner) { const s=this.sessions.get(id); if(!s||s.owner!==owner) throw Object.assign(new Error('Тренировка не найдена. Начните новую.'),{status:404}); return s; }
+  get(id,owner) { this.sweep();const s=this.sessions.get(id); if(!s||s.owner!==owner) throw Object.assign(new Error('Тренировка не найдена. Начните новую.'),{status:404}); return s; }
   view(s) {
     const {profile,scenario,competencies}=s.context;
     return {id:s.id,mode:s.mode,difficulty:s.difficulty,createdAt:s.createdAt,date:s.date,
@@ -47,6 +50,7 @@ export class Trainer {
     if(s.busy)throw Object.assign(new Error('Дождитесь ответа на предыдущий ход'),{status:409});
     if(s.complete||s.report)throw new Error('Диалог завершен. Перейдите к итогу.');
     if(typeof message!=='string'||!message.trim()||message.length>6000)throw new Error('Введите реплику до 6000 символов');
+    if(s.history.length>=64||s.seen.size>=40)throw Object.assign(new Error('Достигнут лимит длины разговора. Завершите его и получите разбор.'),{status:429});
     message=message.trim();
     if(/^(стоп|завершить|закончить)[.!]?$/i.test(message)){s.complete=true;const result=this.view(s);s.seen.set(requestId,{message,result});return result;}
     if(/^(пауза|продолжить)[.!]?$/i.test(message)){
@@ -104,6 +108,7 @@ export class Trainer {
   async hint(s) {
     if(s.busy)throw Object.assign(new Error('Дождитесь ответа'),{status:409});
     if(s.complete)throw new Error('Диалог уже завершен');
+    if(s.hintCount>=3)throw Object.assign(new Error('В одном разговоре доступны три подсказки. Попробуйте ответить своими словами.'),{status:429});
     s.busy=true;
     try {
       const stage=s.context.scenario.dialogue_flow[Math.min(s.steps.length,4)];

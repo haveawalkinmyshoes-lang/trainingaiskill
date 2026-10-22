@@ -8,7 +8,7 @@ async function api(path,data){
   const response=await fetch('/api/'+path,{method:data===undefined?'GET':'POST',credentials:'same-origin',
     headers:data===undefined?{}:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},body:data===undefined?undefined:JSON.stringify(data)});
   let value;try{value=await response.json();}catch{throw new Error('Нет ответа сервера. Запустите «Запустить Нейротренер.cmd».');}
-  if(!response.ok)throw new Error(value.error||'Не удалось выполнить запрос');return value;
+  if(!response.ok){if(response.status===401&&!path.startsWith('auth/'))showLogin('Сессия завершена. Войдите снова.');throw new Error(value.error||'Не удалось выполнить запрос');}return value;
 }
 
 function busy(value){state.busy=value;document.body.classList.toggle('busy',value);for(const id of ['start-session','send-message','finish-session','hint-button','make-plan','message-input','review-complete'])$(id).disabled=value;if(!value)document.querySelectorAll('.pending-message').forEach(n=>n.remove());}
@@ -97,7 +97,9 @@ function renderPerson(character){
   $('person-avatar').replaceChildren(portrait(character));
 }
 
-function messageNode(message,index){const row=el('div','message-row '+(message.role==='user'?'user':['hint','notice'].includes(message.kind)?'hint':'character'));const content=el('div','message-content');content.append(el('div','message-label',message.role==='user'?'Вы':message.kind==='hint'?'Подсказка тренера':message.kind==='notice'?'Тренировка':state.session.scenario.character),el('div','message-text',message.text));row.append(message.role==='assistant'&&message.kind==='character'?portrait(state.session.scenario.character,true):el('span','avatar',message.role==='user'?'Вы':'✧'),content);return row;}
+function employeeName(){return state.employee?.fullName?.split(/\s+/).slice(0,2).join(' ')||'Вы';}
+function employeeInitials(){return state.employee?.fullName?.split(/\s+/).slice(0,2).map(x=>x[0]).join('')||'Вы';}
+function messageNode(message,index){const row=el('div','message-row '+(message.role==='user'?'user':['hint','notice'].includes(message.kind)?'hint':'character'));const content=el('div','message-content');content.append(el('div','message-label',message.role==='user'?employeeName():message.kind==='hint'?'Подсказка тренера':message.kind==='notice'?'Тренировка':state.session.scenario.character),el('div','message-text',message.text));row.append(message.role==='assistant'&&message.kind==='character'?portrait(state.session.scenario.character,true):el('span','avatar',message.role==='user'?employeeInitials():'✧'),content);return row;}
 function scoreNode(step){const box=el('div','score-card');const heading=el('div','score-card-heading');heading.append(el('span','',`Оценка шага ${step.turn}`));const value=el('strong','',fmt(step.score));value.append(el('small','','/ 3'));heading.append(value);box.append(heading);for(const r of step.scores){const c=state.session.scenario.competencies.find(c=>c.id===r.id);const p=el('p','score-detail');p.append(el('strong','',`${c?.name||''} — ${fmt(r.score)} · цель ${fmt(c?.target)}`),document.createTextNode(' '+r.reason));box.append(p);}if(step.demo)box.append(el('div','demo-caption','Условная оценка демонстрации'));return box;}
 function renderMessages(optimistic){const s=state.session,box=$('messages');box.replaceChildren();let turn=0;for(const [index,m] of s.history.entries()){box.append(messageNode(m,index));if(m.role==='user'){const step=s.steps[turn++];if(step)box.append(scoreNode(step));}}if(optimistic)box.append(messageNode({role:'user',text:optimistic}));if(state.busy)box.append(el('div','pending-message','Собеседник обдумывает ответ…'));}
 function renderChat(){const s=state.session;$('chat-topic').textContent=s.scenario.topic;$('chat-title').textContent=s.scenario.title;$('chat-position').textContent=s.profile.title+' · '+s.difficulty+' уровень';$('chat-brief').textContent=s.scenario.brief;$('chat-role').textContent='Вы: '+s.profile.title+'. Собеседник: '+s.scenario.character;$('chat-guidance').textContent=s.steps.length?'':'Прочитайте реплику и ответьте своими словами.';$('chat-guidance').hidden=s.steps.length>0;renderPerson(s.scenario.character);$('chat-demo-note').hidden=s.mode!=='demo';const stages=$('dialogue-stages');stages.replaceChildren();const passed=new Set(s.steps.flatMap(x=>x.stageIds));for(const step of s.stages){const li=el('li',passed.has(step.stage)?'done':'');li.append(el('span','stage-number',passed.has(step.stage)?'✓':String(step.stage)),el('span','',step.goal));stages.append(li);}const comps=$('chat-competencies');comps.replaceChildren();for(const c of s.scenario.competencies){const item=el('div','competency-mini');item.append(el('span','',c.name));const p=el('small','','Цель должности ');p.append(el('strong','',fmt(c.target)));item.append(p);comps.append(item);}renderMessages();$('message-input').placeholder=s.paused?'Напишите «Продолжить», когда будете готовы…':'Ответьте собеседнику своими словами…';$('message-form').hidden=s.complete;$('chat-complete').hidden=!s.complete;$('finish-session').textContent=s.complete?'Получить разбор':'Завершить разговор';}
@@ -125,7 +127,7 @@ $('position-input').addEventListener('keydown',event=>{if(event.key==='Escape')r
 document.addEventListener('click',event=>{if(!event.target.closest('.combobox-wrap'))closeOptions();});$('position-clear').addEventListener('click',()=>{resetProfile();$('position-input').value='';$('position-input').focus();showOptions();});
 $('mode-demo').addEventListener('click',()=>setRunMode('demo'));$('mode-ai').addEventListener('click',()=>setRunMode('ai'));$('start-session').addEventListener('click',startSession);$('message-form').addEventListener('submit',sendMessage);$('message-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();$('message-form').requestSubmit();}});$('hint-button').addEventListener('click',hint);$('finish-session').addEventListener('click',finishSession);$('reflection-form').addEventListener('submit',makePlan);$('download-result').addEventListener('click',download);$('new-training').addEventListener('click',newTraining);$('another-session').addEventListener('click',newTraining);$('show-result').addEventListener('click',()=>{if(state.session?.report){renderResult();showView('result');}});$('retry-session').addEventListener('click',async()=>{const old=state.session;newTraining();state.topic=old.scenario.topic;state.profile=state.catalog.profiles.find(p=>p.id===old.profile.id);state.scenario=old.scenario;state.mode=old.mode;await startSession();});
 $('settings-open').addEventListener('click',openSettings);$('settings-close').addEventListener('click',()=>$('settings-dialog').close());$('settings-form').addEventListener('submit',async event=>{event.preventDefault();$('save-settings').disabled=true;try{await saveSettings({close:true});toast('Подключение сохранено для новых тренировок');}catch(error){toast(error.message);}finally{$('save-settings').disabled=false;}});$('test-connection').addEventListener('click',async()=>{const b=$('test-connection');b.disabled=true;$('connection-result').classList.remove('error');$('connection-result').textContent='Проверяю соединение…';try{await saveSettings();await api('connection',{});$('connection-result').textContent='Соединение установлено. Можно начать тренировку с ИИ.';}catch(error){$('connection-result').classList.add('error');$('connection-result').textContent=error.message;}finally{b.disabled=false;}});
-async function init(){try{state.catalog=await api('bootstrap');state.csrf=state.catalog.csrf;state.connection=state.catalog.connection;state.hosted=Boolean(state.catalog.hosting?.managed);setRunMode(state.connection.configured?'ai':'demo');const saved=sessionStorage.getItem('nt-current-session');if(saved){try{const s=await api('sessions/'+saved);acceptSession(s);if(s.report){renderResult();showView('result');}else{renderChat();showView('chat');}}catch{sessionStorage.removeItem('nt-current-session');}}}catch(error){toast(location.protocol==='file:'?'Откройте «Запустить Нейротренер.cmd», затем http://127.0.0.1:8765. Для работы с ИИ нужен локальный сервер.':error.message);}}
+async function init(){try{const access=await api('auth/status');state.csrf=access.csrf;state.employee=access.employee;$('access-loading').hidden=true;document.body.classList.remove('auth-checking');if(access.required&&!access.employee){showLogin(access.configured?'':'Список сотрудников еще не загружен. Организатору нужно настроить доступ.');$('login-submit').disabled=!access.configured;return;}$('login-view').hidden=true;document.body.classList.remove('auth-locked');$('employee-account').hidden=!access.employee;$('signed-in-name').textContent=employeeName();$('employee-top-name').textContent=employeeName();state.catalog=await api('bootstrap');state.csrf=state.catalog.csrf;state.connection=state.catalog.connection;state.hosted=Boolean(state.catalog.hosting?.managed);setRunMode(state.connection.configured?'ai':'demo');const saved=sessionStorage.getItem('nt-current-session');if(saved){try{const s=await api('sessions/'+saved);acceptSession(s);if(s.report){renderResult();showView('result');}else{renderChat();showView('chat');}}catch{sessionStorage.removeItem('nt-current-session');}}}catch(error){$('access-loading').hidden=true;document.body.classList.remove('auth-checking');showLogin(error.message);toast(location.protocol==='file:'?'Откройте «Запустить Нейротренер.cmd», затем http://127.0.0.1:8765. Для работы с ИИ нужен локальный сервер.':error.message);}}
 $('change-scenario').addEventListener('click',()=>{state.scenario=null;$('scenario-detail').hidden=true;renderScenarios();setSetupStage(3);});
 $('review-complete').addEventListener('click',finishSession);
 $('goto-topic').addEventListener('click',()=>setSetupStage(1));
@@ -133,5 +135,39 @@ $('goto-position').addEventListener('click',()=>{setSetupStage(2);$('position-in
 $('goto-scenario').addEventListener('click',()=>setSetupStage(3));
 $('setup-back').addEventListener('click',()=>setSetupStage(Math.max(1,state.setupStage-1)));
 $('jump-reflection').addEventListener('click',()=>{const section=$(state.session.plan?'monthly-section':'reflection-section');section.scrollIntoView({behavior:'smooth',block:'start'});if(!state.session.plan)$('reflection-one').focus({preventScroll:true});});
+
+function showLogin(message=''){
+  document.body.classList.add('auth-locked');document.body.classList.remove('auth-checking');
+  $('access-loading').hidden=true;$('login-view').hidden=false;$('login-message').textContent=message;
+}
+let waitingForCode=false,resendTimer;
+function codeScreen(active){
+  waitingForCode=active;$('login-code-fields').hidden=!active;$('login-full-name').readOnly=active;
+  $('login-code').required=active;$('login-code').value='';$('login-submit').textContent=active?'Войти в тренажер →':'Получить код в Битрикс24 →';
+  document.querySelectorAll('[data-login-step]').forEach(node=>{if(node.dataset.loginStep===(active?'code':'name'))node.setAttribute('aria-current','step');else node.removeAttribute('aria-current');});if(active)$('login-code').focus();else{clearInterval(resendTimer);$('login-full-name').focus();}
+}
+function resendCountdown(seconds=60){
+  clearInterval(resendTimer);const button=$('login-resend');let left=seconds;
+  const render=()=>{button.disabled=left>0;button.textContent=left>0?`Отправить снова через ${left} с`:'Отправить код снова';};
+  render();resendTimer=setInterval(()=>{left--;render();if(left<=0)clearInterval(resendTimer);},1000);
+}
+$('login-form').addEventListener('submit',async event=>{
+  event.preventDefault();const button=$('login-submit');button.disabled=true;$('login-message').textContent=waitingForCode?'Проверяем код…':'Проверяем ФИО…';
+  try{const result=await api(waitingForCode?'auth/verify':'auth/login',waitingForCode?{code:$('login-code').value.trim()}:{fullName:$('login-full-name').value.trim()});if(result.verificationRequired){codeScreen(true);resendCountdown(result.resendAfter);$('login-message').textContent=result.message;return;}state.csrf=result.csrf;sessionStorage.removeItem('nt-current-session');state.session=null;$('login-full-name').value='';codeScreen(false);await init();}
+  catch(error){$('login-message').textContent=error.message;}
+  finally{button.disabled=false;}
+});
+$('login-change-name').addEventListener('click',()=>{codeScreen(false);$('login-message').textContent='Введите ФИО из списка сотрудников.';});
+$('login-resend').addEventListener('click',async()=>{
+  $('login-resend').disabled=true;
+  try{const result=await api('auth/login',{fullName:$('login-full-name').value.trim()});$('login-message').textContent=result.message;$('login-code').value='';resendCountdown(result.resendAfter);}
+  catch(error){$('login-message').textContent=error.message;$('login-resend').disabled=false;}
+});
+$('sign-out').addEventListener('click',async()=>{
+  if(state.busy)return toast('Дождитесь завершения ответа');
+  try{await api('auth/logout',{});sessionStorage.removeItem('nt-current-session');state.session=null;state.employee=null;await init();}
+  catch(error){toast(error.message);}
+});
+
 stepper();
 await init();

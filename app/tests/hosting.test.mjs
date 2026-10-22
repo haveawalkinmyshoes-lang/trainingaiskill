@@ -13,7 +13,7 @@ function fetch(url,options={}){
 test('Публичный сервер: healthcheck, HTTPS-cookie, закрытые настройки и изоляция сотрудников',async t=>{
   const previous=process.env.PUBLIC_URL;
   process.env.PUBLIC_URL='https://trainer.example';
-  const {server}=await createApp({hosted:true,connection:{key:'fixture-secret'}});
+  const {server}=await createApp({hosted:true,accessRequired:false,connection:{key:'fixture-secret'}});
   server.listen(0,'127.0.0.1');await once(server,'listening');
   t.after(()=>{if(previous===undefined)delete process.env.PUBLIC_URL;else process.env.PUBLIC_URL=previous;server.closeAllConnections();server.close();});
   const origin=`http://127.0.0.1:${server.address().port}`;

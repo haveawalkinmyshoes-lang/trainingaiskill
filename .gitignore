@@ -6,3 +6,6 @@ node_modules/
 .env.*
 !.env.example
 hosted/neurotrainer/dist/
+app/private/
+*.xls
+*.xlsx

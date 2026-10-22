@@ -1,0 +1,31 @@
+import {createRequire} from 'node:module';
+import {once} from 'node:events';
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {createApp} from '../server.mjs';
+const require=createRequire(import.meta.url);
+const {chromium}=require('C:/Users/kadry/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+let delivered;
+const app=await createApp({accessRequired:true,codeVerification:true,employeeAllowlist:[{fullName:'Тестов Тест Тестович',email:'test@example.test'}],sendCode:async message=>{delivered=message;},connection:{key:''}});
+app.server.listen(0,'127.0.0.1');await once(app.server,'listening');
+const browser=await chromium.launch({headless:true,channel:'msedge'});
+try{
+  await mkdir('../.work/ui',{recursive:true});
+  const page=await browser.newPage({viewport:{width:1440,height:1050}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const origin='http://127.0.0.1:'+app.server.address().port;
+  await page.goto(origin);await page.locator('#login-view').waitFor({state:'visible'});
+  assert.equal(await page.locator('.login-steps li').count(),3);
+  await page.screenshot({path:'../.work/ui/12-bitrix-login.png',fullPage:true});
+  await page.locator('#login-full-name').fill('Тестов Тест Тестович');await page.locator('#login-submit').click();
+  await page.locator('#login-code-fields').waitFor({state:'visible'});assert(await page.locator('main').isHidden());assert(await page.locator('#login-resend').isDisabled());
+  await page.screenshot({path:'../.work/ui/13-bitrix-code.png',fullPage:true});
+  await page.locator('#login-code').fill(delivered.code);await page.locator('#login-submit').click();
+  await page.locator('#login-view').waitFor({state:'hidden'});assert.equal(await page.locator('#employee-top-name').textContent(),'Тестов Тест');
+  await page.getByRole('button',{name:/Управление временем/}).click();await page.locator('#position-input').fill('Бренд-менеджер г. Ижевск');await page.locator('.position-option').first().click();await page.locator('[data-scenario="TM01"]').click();await page.locator('#start-session').click();await page.locator('#chat-view').waitFor({state:'visible'});
+  await page.locator('#message-input').fill('К какому сроку нужна выгрузка?');await page.locator('#send-message').click();await page.locator('.message-row.user .message-label').waitFor();assert.equal(await page.locator('.message-row.user .message-label').first().textContent(),'Тестов Тест');
+  await page.screenshot({path:'../.work/ui/14-personal-name.png',fullPage:true});
+  await page.reload();await page.locator('#employee-account').waitFor({state:'visible'});assert.equal(await page.locator('#employee-top-name').textContent(),'Тестов Тест');
+  await page.locator('#sign-out').click();await page.locator('#login-view').waitFor({state:'visible'});
+  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'../.work/ui/15-bitrix-mobile.png',fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
+  console.log('Passed: three login steps, code gate, mailbox recipient from roster, personalized dialogue, reload, logout, mobile.');
+}finally{await browser.close();app.server.closeAllConnections();await new Promise(r=>app.server.close(r));}

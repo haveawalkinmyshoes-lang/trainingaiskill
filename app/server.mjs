@@ -6,6 +6,9 @@ import { randomBytes } from 'node:crypto';
 import { loadLibrary, publicCatalog, availableScenarios } from './lib/domain.mjs';
 import { safeConnection, structuredCall, schemas } from './lib/ai.mjs';
 import { Trainer } from './lib/trainer.mjs';
+import {EmployeeAccess,loadEmployeeAllowlist} from './lib/access.mjs';
+import {LoginCodes} from './lib/login-code.mjs';
+import {createBitrixLoginSender} from './lib/bitrix-mcp.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 function httpError(message,status=400){return Object.assign(new Error(message),{status});}
@@ -22,6 +25,10 @@ async function envFile(){
 }
 export async function createApp(options={}){
   const hosted=options.hosted??process.env.NODE_ENV==='production';
+  const access=new EmployeeAccess(options.employeeAllowlist??await loadEmployeeAllowlist(),{required:options.accessRequired??hosted});
+  const sendCode=options.sendCode??createBitrixLoginSender();
+  const codeVerification=options.codeVerification??(hosted||Boolean(sendCode)||process.env.AUTH_CODE_VERIFICATION==='true');
+  const codes=new LoginCodes(sendCode);
   const library=options.library||await loadLibrary(path.join(here,'..','02_Инструкция_модели_Нейротренера.md'));
   const connection={key:process.env.OPENAI_API_KEY||'',model:process.env.OPENAI_MODEL||'gpt-4.1-mini',
     base:process.env.OPENAI_BASE_URL||'https://api.openai.com/v1',style:process.env.AI_API_STYLE||'responses',...options.connection};
@@ -55,10 +62,37 @@ export async function createApp(options={}){
         let owner=req.headers.cookie?.match(/(?:^|;\s*)nt_owner=([a-f0-9]{48})(?:;|$)/)?.[1];
         if(!owner||!owners.has(owner)){
           if(req.method!=='GET')throw httpError('Откройте приложение перед отправкой запроса',403);
+          if(owners.size>=5000)throw httpError('Слишком много подключений. Попробуйте позже.',429);
           owner=randomBytes(24).toString('hex');owners.set(owner,randomBytes(24).toString('hex'));
           res.setHeader('Set-Cookie',`nt_owner=${owner}; HttpOnly; SameSite=Strict; Path=/${hosted?'; Secure':''}`);
         }
         if(req.method!=='GET'&&req.headers['x-csrf-token']!==owners.get(owner))throw httpError('Обновите страницу: истек токен запроса',403);
+        const accessStatus=()=>({required:access.required,configured:access.people.size>0,codeVerification,employee:access.current(owner),csrf:owners.get(owner)});
+        if(req.method==='GET'&&url.pathname==='/api/auth/status')return send(accessStatus());
+        if(req.method==='POST'&&['/api/auth/login','/api/auth/verify'].includes(url.pathname)){
+          const input=await body(req);let person;
+          if(url.pathname==='/api/auth/verify'){
+            if(!codeVerification)throw httpError('Проверка кода не включена',400);
+            person=codes.verify(owner,input.code);
+          }else if(codeVerification){
+            try{person=access.login(owner,input.fullName);}catch(error){if(error.status!==401)throw error;}
+            // Use the actual socket address; do not trust client-supplied forwarding headers.
+            return send(await codes.request(owner,person,req.socket.remoteAddress||'unknown'));
+          }else person=access.login(owner,input.fullName);
+          const oldOwner=owner;
+          access.logout(oldOwner);owners.delete(oldOwner);
+          for(const [id,s]of trainer.sessions)if(s.owner===oldOwner)trainer.sessions.delete(id);
+          owner=randomBytes(24).toString('hex');owners.set(owner,randomBytes(24).toString('hex'));access.grant(owner,person);
+          res.setHeader('Set-Cookie',`nt_owner=${owner}; HttpOnly; SameSite=Strict; Path=/${hosted?'; Secure':''}`);
+          return send(accessStatus());
+        }
+        if(req.method==='POST'&&url.pathname==='/api/auth/logout'){
+          await body(req);access.logout(owner);codes.cancel(owner);owners.delete(owner);
+          for(const [id,s]of trainer.sessions)if(s.owner===owner)trainer.sessions.delete(id);
+          res.setHeader('Set-Cookie',`nt_owner=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${hosted?'; Secure':''}`);
+          return send({ok:true});
+        }
+        if(access.required&&!access.current(owner))throw httpError('Для доступа войдите по ФИО из списка сотрудников.',401);
         if(req.method==='GET'&&url.pathname==='/api/bootstrap')return send({...publicCatalog(library.config),csrf:owners.get(owner),connection:safeConnection(connection),hosting:{managed:hosted}});
         if(req.method==='GET'&&url.pathname==='/api/scenarios')return send({scenarios:availableScenarios(library.config,url.searchParams.get('topic'),url.searchParams.get('profile'))});
         if(req.method==='POST'&&url.pathname==='/api/settings'){
@@ -79,7 +113,11 @@ export async function createApp(options={}){
           if(check.ok!==true)throw httpError('ИИ не подтвердил соединение');
           return send({ok:true});
         }
-        if(req.method==='POST'&&url.pathname==='/api/sessions')return send(trainer.start(owner,await body(req),connection),201);
+        if(req.method==='POST'&&url.pathname==='/api/sessions'){
+          const result=trainer.start(owner,await body(req),connection);
+          trainer.get(result.id,owner).employee=access.current(owner);
+          return send(result,201);
+        }
         const match=url.pathname.match(/^\/api\/sessions\/([a-f0-9-]+)(?:\/(turn|hint|finalize|plan))?$/);
         if(match){
           const s=trainer.get(match[1],owner);
@@ -101,7 +139,7 @@ export async function createApp(options={}){
       res.writeHead(200,{'Content-Type':asset[1]+'; charset=utf-8'});res.end(req.method==='HEAD'?undefined:content);
     }catch(error){if(!res.headersSent)send({error:error.message||'Не удалось обработать запрос'},error.status||400);else res.end();}
   });
-  return {server,trainer};
+  return {server,trainer,access};
 }
 if(process.argv[1]&&pathToFileURL(path.resolve(process.argv[1])).href===import.meta.url){
   await envFile();
