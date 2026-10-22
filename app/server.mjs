@@ -1,0 +1,112 @@
+import http from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import path from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { loadLibrary, publicCatalog, availableScenarios } from './lib/domain.mjs';
+import { safeConnection, structuredCall, schemas } from './lib/ai.mjs';
+import { Trainer } from './lib/trainer.mjs';
+
+const here=path.dirname(fileURLToPath(import.meta.url));
+function httpError(message,status=400){return Object.assign(new Error(message),{status});}
+async function body(req){
+  if(!req.headers['content-type']?.startsWith('application/json'))throw httpError('Ожидается JSON',415);
+  const chunks=[];let size=0;
+  for await(const chunk of req){size+=chunk.length;if(size>48000)throw httpError('Слишком большой запрос',413);chunks.push(chunk);}
+  try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw httpError('Некорректный JSON');}
+}
+async function envFile(){
+  try{const text=await readFile(path.join(here,'.env'),'utf8');for(const line of text.split(/\r?\n/)){
+    const match=line.match(/^([A-Z_]+)=(.*)$/);if(match&&!process.env[match[1]])process.env[match[1]]=match[2].trim().replace(/^['"]|['"]$/g,'');
+  }}catch(error){if(error.code!=='ENOENT')throw error;}
+}
+export async function createApp(options={}){
+  const hosted=options.hosted??process.env.NODE_ENV==='production';
+  const library=options.library||await loadLibrary(path.join(here,'..','02_Инструкция_модели_Нейротренера.md'));
+  const connection={key:process.env.OPENAI_API_KEY||'',model:process.env.OPENAI_MODEL||'gpt-4.1-mini',
+    base:process.env.OPENAI_BASE_URL||'https://api.openai.com/v1',style:process.env.AI_API_STYLE||'responses',...options.connection};
+  let usageStart=Date.now(),aiCalls=0;
+  const provider=options.call||structuredCall;
+  const call=async(...args)=>{
+    if(hosted){
+      if(Date.now()-usageStart>=86400000){usageStart=Date.now();aiCalls=0;}
+      if(aiCalls>=Number(process.env.MAX_AI_CALLS_PER_DAY||200))throw httpError('Лимит запросов пилота исчерпан. Попробуйте позже.',429);
+      aiCalls++;
+    }
+    return provider(...args);
+  };
+  const trainer=new Trainer(library,call),owners=new Map();
+  const server=http.createServer(async(req,res)=>{
+    res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
+    res.setHeader('Cache-Control','no-store');res.setHeader('X-Frame-Options','DENY');
+    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    const send=(value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(value));};
+    try{
+      if(req.method==='GET'&&req.url==='/healthz')return send({ok:true});
+      const host=req.headers.host||'';
+      const publicUrl=hosted&&(process.env.PUBLIC_URL||process.env.RENDER_EXTERNAL_URL);
+      if(hosted&&!publicUrl)throw httpError('Администратору нужно настроить PUBLIC_URL',503);
+      if(!hosted&&!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host))throw httpError('Недопустимый адрес приложения',403);
+      const origin=hosted?new URL(publicUrl).origin:`http://${host}`;
+      if(hosted&&host!==new URL(origin).host)throw httpError('Недопустимый адрес приложения',403);
+      if(req.headers.origin&&req.headers.origin!==origin)throw httpError('Запрос разрешен только из интерфейса приложения',403);
+      const url=new URL(req.url,origin);
+      if(url.pathname.startsWith('/api/')){
+        let owner=req.headers.cookie?.match(/(?:^|;\s*)nt_owner=([a-f0-9]{48})(?:;|$)/)?.[1];
+        if(!owner||!owners.has(owner)){
+          if(req.method!=='GET')throw httpError('Откройте приложение перед отправкой запроса',403);
+          owner=randomBytes(24).toString('hex');owners.set(owner,randomBytes(24).toString('hex'));
+          res.setHeader('Set-Cookie',`nt_owner=${owner}; HttpOnly; SameSite=Strict; Path=/${hosted?'; Secure':''}`);
+        }
+        if(req.method!=='GET'&&req.headers['x-csrf-token']!==owners.get(owner))throw httpError('Обновите страницу: истек токен запроса',403);
+        if(req.method==='GET'&&url.pathname==='/api/bootstrap')return send({...publicCatalog(library.config),csrf:owners.get(owner),connection:safeConnection(connection),hosting:{managed:hosted}});
+        if(req.method==='GET'&&url.pathname==='/api/scenarios')return send({scenarios:availableScenarios(library.config,url.searchParams.get('topic'),url.searchParams.get('profile'))});
+        if(req.method==='POST'&&url.pathname==='/api/settings'){
+          if(hosted)throw httpError('Настройки ИИ задает администратор в Render',403);
+          const input=await body(req);let parsed;
+          try{parsed=new URL(input.base);}catch{throw httpError('Укажите адрес API');}
+          if(parsed.username||parsed.password||parsed.search||parsed.hash||!(parsed.protocol==='https:'||(parsed.protocol==='http:'&&['localhost','127.0.0.1'].includes(parsed.hostname))))throw httpError('API требует HTTPS; HTTP разрешен только для локальной модели');
+          if(typeof input.model!=='string'||!input.model.trim()||input.model.length>120||/[\r\n]/.test(input.model))throw httpError('Укажите название модели');
+          if(!['responses','chat'].includes(input.style))throw httpError('Неизвестный протокол API');
+          if(input.key!==undefined&&(typeof input.key!=='string'||input.key.length>2000||/[\r\n]/.test(input.key)))throw httpError('Некорректный ключ');
+          connection.base=parsed.toString().replace(/\/$/,'');connection.model=input.model.trim();connection.style=input.style;
+          if(input.clearKey)connection.key='';else if(input.key?.trim())connection.key=input.key.trim();
+          return send(safeConnection(connection));
+        }
+        if(req.method==='POST'&&url.pathname==='/api/connection'){
+          if(hosted)throw httpError('Проверка подключения доступна администратору',403);
+          await body(req);const check=await call({...connection},'Верни JSON {"ok":true}. Это проверка соединения, без иных действий.',{},schemas.connection,'trainer_connection');
+          if(check.ok!==true)throw httpError('ИИ не подтвердил соединение');
+          return send({ok:true});
+        }
+        if(req.method==='POST'&&url.pathname==='/api/sessions')return send(trainer.start(owner,await body(req),connection),201);
+        const match=url.pathname.match(/^\/api\/sessions\/([a-f0-9-]+)(?:\/(turn|hint|finalize|plan))?$/);
+        if(match){
+          const s=trainer.get(match[1],owner);
+          if(req.method==='GET'&&!match[2])return send(trainer.view(s));
+          if(req.method==='POST'){
+            const input=await body(req);
+            if(match[2]==='turn')return send(await trainer.turn(s,input.message,input.requestId));
+            if(match[2]==='hint')return send(await trainer.hint(s));
+            if(match[2]==='finalize')return send(await trainer.finalize(s));
+            if(match[2]==='plan')return send(await trainer.plan(s,input.answers));
+          }
+        }
+        throw httpError('Маршрут не найден',404);
+      }
+      const assets={'/':['index.html','text/html'],'/index.html':['index.html','text/html'],'/app.js':['app.js','text/javascript'],'/styles.css':['styles.css','text/css'],'/favicon.svg':['favicon.svg','image/svg+xml']};
+      if(req.method!=='GET'&&req.method!=='HEAD')throw httpError('Метод не поддерживается',405);
+      const asset=assets[url.pathname];if(!asset)throw httpError('Файл не найден',404);
+      const content=await readFile(path.join(here,'public',asset[0]));
+      res.writeHead(200,{'Content-Type':asset[1]+'; charset=utf-8'});res.end(req.method==='HEAD'?undefined:content);
+    }catch(error){if(!res.headersSent)send({error:error.message||'Не удалось обработать запрос'},error.status||400);else res.end();}
+  });
+  return {server,trainer};
+}
+if(process.argv[1]&&pathToFileURL(path.resolve(process.argv[1])).href===import.meta.url){
+  await envFile();
+  const port=Number(process.env.PORT||8765),{server}=await createApp();
+  server.on('error',error=>{console.error(error.code==='EADDRINUSE'?`Порт ${port} занят. Откройте http://127.0.0.1:${port} или задайте другой PORT.`:error.message);process.exitCode=1;});
+  const bind=process.env.NODE_ENV==='production'?'0.0.0.0':'127.0.0.1';
+  server.listen(port,bind,()=>console.log(`Нейротренер запущен: ${bind}:${port}`));
+}

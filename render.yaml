@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: neurotrainer
+    runtime: node
+    plan: free
+    buildCommand: node --check app/server.mjs
+    startCommand: node app/server.mjs
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 24.19.0
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: AI_API_STYLE
+        value: responses
