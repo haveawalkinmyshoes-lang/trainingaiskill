@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { loadLibrary, publicCatalog, availableScenarios } from './lib/domain.mjs';
-import { safeConnection, structuredCall, schemas } from './lib/ai.mjs';
+import { safeConnection, structuredCall, schemas, safeAIFailure } from './lib/ai.mjs';
 import { Trainer } from './lib/trainer.mjs';
 import {EmployeeAccess,loadEmployeeAllowlist} from './lib/access.mjs';
 import {LoginCodes} from './lib/login-code.mjs';
@@ -36,7 +36,7 @@ export async function createApp(options={}){
   const library=options.library||await loadLibrary(path.join(here,'..','02_Инструкция_модели_Нейротренера.md'));
   const connection={key:process.env.OPENAI_API_KEY||'',model:process.env.OPENAI_MODEL||'gpt-4.1-mini',
     base:process.env.OPENAI_BASE_URL||'https://api.openai.com/v1',style:process.env.AI_API_STYLE||'responses',...options.connection};
-  let usageStart=Date.now(),aiCalls=0;
+  let usageStart=Date.now(),aiCalls=0,lastAIFailure=null,lastAISuccessAt=null;
   const provider=options.call||structuredCall;
   const call=async(...args)=>{
     if(hosted){
@@ -44,13 +44,14 @@ export async function createApp(options={}){
       if(aiCalls>=Number(process.env.MAX_AI_CALLS_PER_DAY||200))throw httpError('Лимит запросов пилота исчерпан. Попробуйте позже.',429);
       aiCalls++;
     }
-    return provider(...args);
+    try{const result=await provider(...args);lastAISuccessAt=new Date().toISOString();return result;}
+    catch(error){lastAIFailure={at:new Date().toISOString(),...safeAIFailure(error)};throw error;}
   };
   const trainer=new Trainer(library,call),owners=new Map();
   const bridge=createAdminBridge({settings:options.bridgeSettings??await bridgeSettings(),library,trainer,
     status:()=>({ok:true,revision:process.env.RENDER_GIT_COMMIT||'local',hosting:hosted?'production':'local',
       topics:library.config.ui.topic_selector.options,scenarioCount:library.config.scenarios.length,profileCount:library.config.job_profiles.length,
-      ai:{configured:Boolean(connection.key),model:connection.model,style:connection.style,callsInCurrentWindow:aiCalls,windowStartedAt:new Date(usageStart).toISOString(),limitPerDay:Number(process.env.MAX_AI_CALLS_PER_DAY||200)},
+      ai:{configured:Boolean(connection.key),model:connection.model,style:connection.style,callsInCurrentWindow:aiCalls,windowStartedAt:new Date(usageStart).toISOString(),limitPerDay:Number(process.env.MAX_AI_CALLS_PER_DAY||200),lastFailure:lastAIFailure,lastSuccessAt:lastAISuccessAt},
       access:{required:access.required,allowlistConfigured:access.people.size>0,codeVerification,bitrixConfigured:Boolean(sendCode)},
       dataStorage:'in_memory_reset_on_restart'}),
     checkAI:async()=>{const result=await call({...connection},'Верни JSON {"ok":true}. Это проверка соединения.',{},schemas.connection,'trainer_bridge_connection');if(result.ok!==true)throw httpError('ИИ не подтвердил соединение',502);},
