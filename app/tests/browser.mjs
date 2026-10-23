@@ -25,7 +25,8 @@ await page.locator('#goto-topic').click();
 assert(await page.locator('#topic-section').isVisible());
 await page.locator('#goto-scenario').click();
 await page.locator('[data-scenario="TM01"]').click();
-assert.equal(await page.locator('#detail-user-avatar svg,#detail-character-avatar svg').count(),2);
+assert.equal(await page.locator('#detail-user-avatar img,#detail-character-avatar img').count(),2);
+await page.waitForFunction(()=>[...document.querySelectorAll('#detail-user-avatar img,#detail-character-avatar img')].every(img=>img.complete&&img.naturalWidth>0));
 assert.equal(await page.locator('#detail-brief .sentence-line').count(),4);
 assert(await page.locator('#detail-brief').evaluate(node=>{const lines=[...node.children];return lines.every((line,i)=>i===0||line.getBoundingClientRect().top>=lines[i-1].getBoundingClientRect().bottom);}));
 assert.match(await page.locator('#detail-role').textContent(),/Менеджер по продажам/);
@@ -80,7 +81,7 @@ await page.screenshot({path:'../.work/ui/07-mobile-preparation.png',fullPage:tru
 assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false,'Горизонтальная прокрутка подготовки');
 await page.locator('#start-session').click();
 await page.locator('#chat-view').waitFor({state:'visible'});
-assert(await page.locator('#person-avatar svg').isVisible());
+assert(await page.locator('#person-avatar img').isVisible());
 assert.equal(await page.locator('#person-name').textContent(),'Елена');
 assert.equal(await page.locator('.speech-toolbar').count(),0);
 assert.equal(await page.locator('.speech-reply').count(),0);

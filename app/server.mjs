@@ -155,6 +155,8 @@ export async function createApp(options={}){
         throw httpError('Маршрут не найден',404);
       }
       const assets={'/':['index.html','text/html'],'/index.html':['index.html','text/html'],'/app.js':['app.js','text/javascript'],'/styles.css':['styles.css','text/css'],'/favicon.svg':['favicon.svg','image/svg+xml']};
+      // Only the eight packaged portraits are public; no arbitrary file paths.
+      for(const gender of ['female','male'])for(let i=1;i<=4;i++){const name=gender+'-0'+i+'.webp';assets['/avatars/'+name]=['avatars/'+name,'image/webp'];}
       if(req.method!=='GET'&&req.method!=='HEAD')throw httpError('Метод не поддерживается',405);
       const asset=assets[url.pathname];if(!asset)throw httpError('Файл не найден',404);
       const content=await readFile(path.join(here,'public',asset[0]));

@@ -81,23 +81,22 @@ async function startSession(){
   busy(true);try{const s=await api('sessions',{topic:state.topic,profileId:state.profile.id,scenarioId:state.scenario.id,mode:state.mode,difficulty:'начальный'});acceptSession(s);$('message-input').value='';state.pending=null;renderChat();showView('chat');if(!matchMedia('(max-width:680px)').matches)$('message-input').focus({preventScroll:true});}catch(error){toast(error.message);}finally{busy(false);}
 }
 
+// Stable portraits: the same named character keeps their portrait across views.
 function portrait(character,small=false){
-  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
-  svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('aria-hidden','true');svg.classList.add(small?'portrait-small':'portrait');
-  const seed=[...character].reduce((n,c)=>n+c.charCodeAt(0),0),variant=seed%3;
-  const make=(tag,attrs)=>{const node=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))node.setAttribute(k,v);svg.append(node);return node;};
-  const colors=[['#e6edef','#1b4154','#402f2d'],['#e7e7d7','#233135','#392c24'],['#e0e8eb','#1b4154','#514039']][variant];
-  make('rect',{width:'100',height:'100',rx:'24',fill:colors[0]});
-  if(variant===2)make('path',{d:'M24 57V35C24 5 76 7 76 36V64H24',fill:colors[2]});
-  make('path',{d:'M10 100C12 64 88 64 90 100Z',fill:colors[1]});
-  make('path',{d:'M41 59H59V74Q50 85 41 74Z',fill:'#dca98b'});
-  make('ellipse',{cx:'50',cy:'42',rx:'22',ry:'27',fill:'#ebbea0'});
-  make('path',{d:variant===1?'M28 42C18 14 46 5 65 15C78 20 77 36 72 41L65 28Q45 34 34 27Z':'M27 42C19 21 34 10 53 12C73 12 80 30 71 44L67 29Q45 22 32 37Z',fill:colors[2]});
-  make('path',{d:'M37 44h5M58 44h5',stroke:'#3c3030','stroke-width':'2.5','stroke-linecap':'round'});
-  make('path',{d:'M50 46l-2 9h5',fill:'none',stroke:'#c28a70','stroke-width':'1.5','stroke-linecap':'round'});
-  make('path',{d:'M43 61Q50 65 57 60',fill:'none',stroke:'#915d52','stroke-width':'2','stroke-linecap':'round'});
-  make('path',{d:'M36 77L46 88L50 80L55 88L64 77',fill:'#fff9ee'});
-  return svg;
+  const name=String(character||'').split(',')[0].trim().toLocaleLowerCase('ru');
+  const tokens=name.split(/\s+/);
+  const women=['анна','вера','марина','лена','светлана','ольга','мария','наталья','даша','арина','екатерина','оксана','елена','алиса','лариса','полина','ирина'];
+  const woman=women.find(n=>tokens.includes(n));
+  const known={анна:1,вера:2,марина:3,лена:1,светлана:4,ольга:2,мария:3,наталья:4,даша:1,арина:2,екатерина:3,оксана:4,елена:2,алиса:1,лариса:4,полина:3,ирина:4,дмитрий:1,сергей:2,роман:3,илья:4,саша:1,денис:2,борис:3,кирилл:4,игорь:2,павел:1,алексей:4,евгений:3,антон:2,михаил:1,станислав:3,глеб:4,никита:1,вадим:2,костя:4,петр:3,олег:2,тимур:4,ярослав:1};
+  const key=tokens.find(n=>Object.hasOwn(known,n));
+  const seed=[...name].reduce((n,c)=>n+c.charCodeAt(0),0);
+  const index=key?known[key]:seed%4+1;
+  const img=document.createElement('img');
+  img.src='/avatars/'+(woman?'female':'male')+'-0'+index+'.webp';
+  img.alt='';img.setAttribute('aria-hidden','true');
+  img.className=small?'portrait-small':'portrait';
+  img.width=small?36:100;img.height=small?36:100;img.decoding='async';
+  return img;
 }
 function renderPerson(character){
   const parts=character.split(',');$('person-name').textContent=parts[0].trim();$('person-role').textContent=parts.slice(1).join(',').trim()||'Ваш собеседник';
