@@ -56,6 +56,7 @@ export async function createApp(options={}){
     checkAI:async()=>{const result=await call({...connection},'Верни JSON {"ok":true}. Это проверка соединения.',{},schemas.connection,'trainer_bridge_connection');if(result.ok!==true)throw httpError('ИИ не подтвердил соединение',502);},
     ...(options.bridgeFetch?{fetchImpl:options.bridgeFetch}:{})});
   const server=http.createServer(async(req,res)=>{
+    if(String(req.url||'').split('?')[0]==='/mcp')bridge.observe(req,res);
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Frame-Options','DENY');
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");

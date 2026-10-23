@@ -19,10 +19,22 @@ export async function bridgeSettings(env=process.env){
     serviceId:env.RENDER_SERVICE_ID||values.RENDER_SERVICE_ID||'',allowDeploy:(env.TRAINER_BRIDGE_ALLOW_DEPLOY||values.TRAINER_BRIDGE_ALLOW_DEPLOY)==='true'};
 }
 export function createAdminBridge({settings,library,trainer,status,checkAI,fetchImpl=fetch,now=Date.now}){
-  const startedAt=now(),events=[];
+  const startedAt=now(),events=[],connections=[];
   let windowStart=now(),requests=0,busy=false,lastAI=-Infinity,lastDeploy=-Infinity;
   const enabled=typeof settings.token==='string'&&settings.token.length>=32;
   const digest=value=>createHash('sha256').update(value).digest();
+  const authorized=req=>typeof req.headers.authorization==='string'&&req.headers.authorization.length<=1024&&req.headers.authorization.startsWith('Bearer ')&&timingSafeEqual(digest(req.headers.authorization.slice(7)),digest(settings.token));
+  function observe(req,res){
+    const start=now();
+    // Store only enumerated transport facts, never header values, URLs or bodies.
+    const event={at:new Date(start).toISOString(),method:['POST','GET','DELETE','OPTIONS'].includes(req.method)?req.method:'other',
+      authorizationPresent:Boolean(req.headers.authorization),authorized:enabled&&authorized(req),originPresent:Boolean(req.headers.origin),
+      protocol:req.headers['mcp-protocol-version']?(protocolVersions.includes(req.headers['mcp-protocol-version'])?req.headers['mcp-protocol-version']:'unsupported'):'absent'};
+    res.once('finish',()=>{
+      connections.push({...event,status:res.statusCode,durationMs:Math.max(0,now()-start)});
+      if(connections.length>100)connections.shift();
+    });
+  }
   // Never retain raw messages, query strings, headers, personal names or provider errors.
   function recordError(error,request){
     const status=Number.isInteger(error.status)&&error.status>=400&&error.status<=599?error.status:400;
@@ -56,7 +68,7 @@ export function createAdminBridge({settings,library,trainer,status,checkAI,fetch
         withReport:sessions.filter(s=>s.report).length,withPlan:sessions.filter(s=>s.plan).length,
         modes:{ai:sessions.filter(s=>s.mode==='ai').length,demo:sessions.filter(s=>s.mode==='demo').length}};
     }},
-    {name:'trainer_recent_errors',description:'До 100 последних технических ошибок и ограничений с момента запуска: время, область и HTTP-статус. Без текстов диалогов, ФИО, ключей и исходных логов Render.',inputSchema:empty,run:()=>({scope:'current_process',events:events.map(e=>({...e}))})},
+    {name:'trainer_recent_errors',description:'До 100 последних технических ошибок и 100 подключений MCP с момента запуска: время, статусы и безопасные признаки авторизации/протокола. Без значений заголовков, диалогов, ФИО, ключей и исходных логов Render.',inputSchema:empty,run:()=>({scope:'current_process',events:events.map(e=>({...e})),connections:connections.map(e=>({...e}))})},
     {name:'trainer_profiles',description:'Справочник профилей матрицы. Поиск по названию должности, без списка сотрудников.',inputSchema:schema({query:{type:'string',maxLength:120},offset:{type:'integer',minimum:0,maximum:10000}}),run:args=>{
       const matches=library.config.job_profiles.filter(p=>!args.query||p.title.toLocaleLowerCase('ru').includes(args.query.toLocaleLowerCase('ru')));
       const offset=args.offset||0;return {total:matches.length,offset,profiles:matches.slice(offset,offset+50).map(p=>({id:p.id,title:p.title,family:p.family,level:p.job_level})),nextOffset:offset+50<matches.length?offset+50:null};
@@ -101,8 +113,7 @@ export function createAdminBridge({settings,library,trainer,status,checkAI,fetch
   async function handle(req,res,readBody){
     const send=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
     if(!enabled)return send({error:'MCP-мост выключен. Настройте TRAINER_BRIDGE_TOKEN длиной не менее 32 символов.'},503);
-    const auth=req.headers.authorization;
-    if(typeof auth!=='string'||auth.length>1024||!auth.startsWith('Bearer ')||!timingSafeEqual(digest(auth.slice(7)),digest(settings.token))){
+    if(!authorized(req)){
       res.setHeader('WWW-Authenticate','Bearer realm="neurotrainer-admin"');return send({error:'Требуется отдельный ключ MCP-моста'},401);
     }
     if(now()-windowStart>=60000){windowStart=now();requests=0;}
@@ -135,5 +146,5 @@ export function createAdminBridge({settings,library,trainer,status,checkAI,fetch
     catch(e){recordError(e,{url:'/mcp'});return result({isError:true,content:[{type:'text',text:e.status?e.message:'Не удалось выполнить инструмент моста'}]});}
     finally{busy=false;}
   }
-  return {handle,recordError};
+  return {handle,recordError,observe};
 }

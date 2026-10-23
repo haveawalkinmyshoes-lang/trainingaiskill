@@ -91,3 +91,15 @@ test('У моста ограничен поток запросов',async t=>{
   const {rpc}=await fixture(t);for(let i=0;i<120;i++)assert.equal((await rpc('ping')).response.status,200);
   assert.equal((await rpc('ping')).response.status,429);
 });
+test('Диагностика подключений отличает авторизацию, Origin и протокол, не хранит значения',async t=>{
+  const {rpc}=await fixture(t);
+  await rpc('ping',{}, {Authorization:'Bearer PRIVATE_WRONG_TOKEN'});
+  await rpc('ping',{}, {Origin:'https://PRIVATE_ORIGIN.example'});
+  await rpc('ping',{}, {'MCP-Protocol-Version':'PRIVATE_PROTOCOL'});
+  const result=await rpc('tools/call',{name:'trainer_recent_errors'});
+  const data=JSON.parse(result.data.result.content[0].text);
+  assert(data.connections.some(c=>c.status===401&&c.authorizationPresent&&!c.authorized));
+  assert(data.connections.some(c=>c.status===403&&c.authorized&&c.originPresent));
+  assert(data.connections.some(c=>c.status===400&&c.protocol==='unsupported'));
+  for(const secret of ['PRIVATE_',token])assert(!JSON.stringify(data).includes(secret));
+});
