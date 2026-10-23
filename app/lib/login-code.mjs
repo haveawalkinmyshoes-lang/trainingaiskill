@@ -22,7 +22,7 @@ export class LoginCodes{
     const code=String(randomInt(0,1000000)).padStart(6,'0');
     const item={hash:this.digest(owner,code),person:person?.email?person:null,attempts:0,expiresAt:now+300000,resendAt:now+60000};
     this.pending.set(owner,item);this.inFlight++;
-    try{if(item.person)await this.send({email:person.email,code});}
+    try{if(item.person){const delivery=await this.send({email:person.email,code});if(delivery?.position)item.person={...item.person,position:delivery.position};}}
     catch(error){this.pending.delete(owner);throw error;}
     finally{this.inFlight--;}
     return {verificationRequired:true,expiresIn:300,resendAfter:60,message:'Если ФИО есть в списке и учетная запись найдена, код отправлен в личные сообщения Битрикс24.'};
@@ -35,7 +35,7 @@ export class LoginCodes{
       if(item.attempts===5)this.pending.delete(owner);
       throw fail('Код не подошел. Проверьте шесть цифр из сообщения Битрикс24.',401);
     }
-    this.pending.delete(owner);return {fullName:item.person.fullName};
+    this.pending.delete(owner);return {fullName:item.person.fullName,...(item.person.position?{position:item.person.position}:{}),...(item.person.profileId?{profileId:item.person.profileId}:{})};
   }
   cancel(owner){this.pending.delete(owner);}
 }

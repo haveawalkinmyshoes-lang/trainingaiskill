@@ -6,7 +6,7 @@ import {createApp} from '../server.mjs';
 const require=createRequire(import.meta.url);
 const {chromium}=require('C:/Users/kadry/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 let delivered;
-const app=await createApp({accessRequired:true,codeVerification:true,employeeAllowlist:[{fullName:'Тестов Тест Тестович',email:'test@example.test'}],sendCode:async message=>{delivered=message;},connection:{key:''}});
+const app=await createApp({accessRequired:true,codeVerification:true,employeeAllowlist:[{fullName:'Тестов Тест Тестович',email:'test@example.test',position:'Бренд-менеджер г. Ижевск'}],sendCode:async message=>{delivered=message;},connection:{key:''}});
 app.server.listen(0,'127.0.0.1');await once(app.server,'listening');
 const browser=await chromium.launch({headless:true,channel:'msedge'});
 try{
@@ -31,7 +31,9 @@ try{
   assert.equal(await page.locator('#login-code').inputValue(),delivered.code);assert.equal(await page.locator('#otp-cells').textContent(),delivered.code);assert.equal(await page.locator('#otp-cells').evaluate(node=>node.getAnimations({subtree:true}).length),0);
   await page.locator('#login-submit').click();
   await page.locator('#login-view').waitFor({state:'hidden'});assert.equal(await page.locator('#employee-top-name').textContent(),'Тестов Тест');
-  await page.getByRole('button',{name:/Управление временем/}).click();await page.locator('#position-input').fill('Бренд-менеджер г. Ижевск');await page.locator('.position-option').first().click();await page.locator('[data-scenario="TM01"]').click();await page.locator('#start-session').click();await page.locator('#chat-view').waitFor({state:'visible'});
+  assert.equal(await page.locator('#position-input,#difficulty').count(),0);assert.equal(await page.locator('.stepper li').count(),2);
+  await page.screenshot({path:'../.work/ui/17-two-step-setup.png',fullPage:true});
+  await page.getByRole('button',{name:/Управление временем/}).click();await page.locator('[data-scenario="TM01"]').click();await page.locator('#start-session').click();await page.locator('#chat-view').waitFor({state:'visible'});
   await page.locator('#message-input').fill('К какому сроку нужна выгрузка?');await page.locator('#send-message').click();await page.locator('.message-row.user .message-label').waitFor();assert.equal(await page.locator('.message-row.user .message-label').first().textContent(),'Тестов Тест');
   await page.screenshot({path:'../.work/ui/14-personal-name.png',fullPage:true});
   await page.reload();await page.locator('#employee-account').waitFor({state:'visible'});assert.equal(await page.locator('#employee-top-name').textContent(),'Тестов Тест');

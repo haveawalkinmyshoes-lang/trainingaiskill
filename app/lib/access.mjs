@@ -40,7 +40,7 @@ export class EmployeeAccess{
       const email=typeof record==='object'&&typeof record.email==='string'?record.email.trim():'';
       if(email&&!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email))throw new Error('Некорректная почта в списке допуска');
       if(this.people.has(key))throw new Error('Повторяющееся ФИО в списке допуска: используйте уникальные полные имена');
-      this.people.set(key,{fullName:display,...(email?{email}:{})});
+      this.people.set(key,{fullName:display,...(email?{email}:{}),...(typeof record.position==='string'?{position:record.position}:{}),...(typeof record.profileId==='string'?{profileId:record.profileId}:{})});
       for(const variant of nameVariants(display)){
         if(!this.nameIndex.has(variant))this.nameIndex.set(variant,new Set());
         this.nameIndex.get(variant).add(key);
@@ -51,7 +51,7 @@ export class EmployeeAccess{
     const session=this.sessions.get(owner);
     if(!session)return null;
     if(session.expiresAt<=now){this.sessions.delete(owner);return null;}
-    return {fullName:session.fullName};
+    return {fullName:session.fullName,...(session.position?{position:session.position}:{}),...(session.profileId?{profileId:session.profileId}:{})};
   }
   login(owner,fullName,now=Date.now()){
     if(!this.people.size)throw Object.assign(new Error('Список сотрудников пока не загружен. Обратитесь к организатору тестирования.'),{status:503});

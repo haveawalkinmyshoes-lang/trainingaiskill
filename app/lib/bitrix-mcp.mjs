@@ -52,6 +52,7 @@ export class BitrixMcp{
     const result=await this.call('im.message.add',{DIALOG_ID:String(employee.ID),MESSAGE:`Нейротренер: код входа ${code}.\nКод действует 5 минут. Никому не сообщайте его. Если вы не запрашивали вход, проигнорируйте сообщение.`,URL_PREVIEW:'N'});
     const id=typeof result==='number'?result:result?.result;
     if(!/^\d+$/.test(String(id)))throw failure('Битрикс24 не подтвердил отправку сообщения.');
+    return {position:typeof employee.WORK_POSITION==='string'?employee.WORK_POSITION.trim():''};
   }
 }
 export function createBitrixLoginSender({url=process.env.BITRIX_MCP_URL,token=process.env.MCP_AUTH_TOKEN,fetcher}={}){

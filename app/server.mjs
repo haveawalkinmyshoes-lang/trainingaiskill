@@ -9,6 +9,7 @@ import { Trainer } from './lib/trainer.mjs';
 import {EmployeeAccess,loadEmployeeAllowlist} from './lib/access.mjs';
 import {LoginCodes} from './lib/login-code.mjs';
 import {createBitrixLoginSender} from './lib/bitrix-mcp.mjs';
+import {resolveEmployeeProfile} from './lib/employee-profile.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 function httpError(message,status=400){return Object.assign(new Error(message),{status});}
@@ -93,8 +94,17 @@ export async function createApp(options={}){
           return send({ok:true});
         }
         if(access.required&&!access.current(owner))throw httpError('Для доступа войдите по ФИО из списка сотрудников.',401);
-        if(req.method==='GET'&&url.pathname==='/api/bootstrap')return send({...publicCatalog(library.config),csrf:owners.get(owner),connection:safeConnection(connection),hosting:{managed:hosted}});
-        if(req.method==='GET'&&url.pathname==='/api/scenarios')return send({scenarios:availableScenarios(library.config,url.searchParams.get('topic'),url.searchParams.get('profile'))});
+        const employee=access.current(owner),assignment=resolveEmployeeProfile(library.config,employee);
+        const personalProfile=()=>{
+          if(assignment)return assignment.profile.id;
+          if(employee&&(hosted||codeVerification))throw httpError('Для вашей должности пока не настроен профиль оценки. Обратитесь к организатору.',422);
+          return url.searchParams.get('profile');
+        };
+        if(req.method==='GET'&&url.pathname==='/api/bootstrap'){
+          const catalog=publicCatalog(library.config),devProfile=!employee&&!hosted?catalog.profiles.find(p=>p.id==='ROLE_026'):null;
+          return send({...catalog,employeeProfile:assignment?catalog.profiles.find(p=>p.id===assignment.profile.id):devProfile,employeePosition:assignment?.position||'',profileMatch:assignment?.match||null,csrf:owners.get(owner),connection:safeConnection(connection),hosting:{managed:hosted}});
+        }
+        if(req.method==='GET'&&url.pathname==='/api/scenarios')return send({scenarios:availableScenarios(library.config,url.searchParams.get('topic'),personalProfile())});
         if(req.method==='POST'&&url.pathname==='/api/settings'){
           if(hosted)throw httpError('Настройки ИИ задает администратор в Render',403);
           const input=await body(req);let parsed;
@@ -114,7 +124,10 @@ export async function createApp(options={}){
           return send({ok:true});
         }
         if(req.method==='POST'&&url.pathname==='/api/sessions'){
-          const result=trainer.start(owner,await body(req),connection);
+          const input=await body(req);
+          if(assignment||employee&&(hosted||codeVerification))input.profileId=personalProfile();
+          input.difficulty='начальный';
+          const result=trainer.start(owner,input,connection);
           trainer.get(result.id,owner).employee=access.current(owner);
           return send(result,201);
         }
