@@ -11,6 +11,7 @@ import {LoginCodes} from './lib/login-code.mjs';
 import {createBitrixLoginSender} from './lib/bitrix-mcp.mjs';
 import {resolveEmployeeProfile} from './lib/employee-profile.mjs';
 import {codeException,exemptBitrixId} from './lib/code-exceptions.mjs';
+import {bridgeSettings,createAdminBridge} from './lib/admin-bridge.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 function httpError(message,status=400){return Object.assign(new Error(message),{status});}
@@ -46,6 +47,14 @@ export async function createApp(options={}){
     return provider(...args);
   };
   const trainer=new Trainer(library,call),owners=new Map();
+  const bridge=createAdminBridge({settings:options.bridgeSettings??await bridgeSettings(),library,trainer,
+    status:()=>({ok:true,revision:process.env.RENDER_GIT_COMMIT||'local',hosting:hosted?'production':'local',
+      topics:library.config.ui.topic_selector.options,scenarioCount:library.config.scenarios.length,profileCount:library.config.job_profiles.length,
+      ai:{configured:Boolean(connection.key),model:connection.model,style:connection.style,callsInCurrentWindow:aiCalls,windowStartedAt:new Date(usageStart).toISOString(),limitPerDay:Number(process.env.MAX_AI_CALLS_PER_DAY||200)},
+      access:{required:access.required,allowlistConfigured:access.people.size>0,codeVerification,bitrixConfigured:Boolean(sendCode)},
+      dataStorage:'in_memory_reset_on_restart'}),
+    checkAI:async()=>{const result=await call({...connection},'Верни JSON {"ok":true}. Это проверка соединения.',{},schemas.connection,'trainer_bridge_connection');if(result.ok!==true)throw httpError('ИИ не подтвердил соединение',502);},
+    ...(options.bridgeFetch?{fetchImpl:options.bridgeFetch}:{})});
   const server=http.createServer(async(req,res)=>{
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Frame-Options','DENY');
@@ -61,6 +70,7 @@ export async function createApp(options={}){
       if(hosted&&host!==new URL(origin).host)throw httpError('Недопустимый адрес приложения',403);
       if(req.headers.origin&&req.headers.origin!==origin)throw httpError('Запрос разрешен только из интерфейса приложения',403);
       const url=new URL(req.url,origin);
+      if(url.pathname==='/mcp')return await bridge.handle(req,res,body);
       if(url.pathname.startsWith('/api/')){
         let owner=req.headers.cookie?.match(/(?:^|;\s*)nt_owner=([a-f0-9]{48})(?:;|$)/)?.[1];
         if(!owner||!owners.has(owner)){
@@ -161,7 +171,7 @@ export async function createApp(options={}){
       const asset=assets[url.pathname];if(!asset)throw httpError('Файл не найден',404);
       const content=await readFile(path.join(here,'public',asset[0]));
       res.writeHead(200,{'Content-Type':asset[1]+'; charset=utf-8'});res.end(req.method==='HEAD'?undefined:content);
-    }catch(error){if(!res.headersSent)send({error:error.message||'Не удалось обработать запрос'},error.status||400);else res.end();}
+    }catch(error){bridge.recordError(error,req);if(!res.headersSent)send({error:error.message||'Не удалось обработать запрос'},error.status||400);else res.end();}
   });
   return {server,trainer,access};
 }
