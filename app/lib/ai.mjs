@@ -12,11 +12,14 @@ export function safeAIFailure(error){
   return {kind:kinds.includes(value?.kind)?value.kind:'unknown',httpStatus:Number.isInteger(value?.httpStatus)&&value.httpStatus>=400&&value.httpStatus<=599?value.httpStatus:null,
     code:providerCodes.has(value?.code)?value.code:null,retryAfterSeconds:Number.isInteger(value?.retryAfterSeconds)&&value.retryAfterSeconds>=0&&value.retryAfterSeconds<=86400?value.retryAfterSeconds:null};
 }
-export const scoreRow = ids => object({id:{type:'integer',enum:ids},score,quote:string,reason:string});
+export const scoreRow = (ids,quotes) => {
+  const row=(scoreValues,quoteValues)=>object({id:{type:'integer',enum:ids},score:{enum:scoreValues},quote:{type:'string',enum:quoteValues},reason:string});
+  return quotes?.length?{anyOf:[row([0.5,1,1.5,2,2.5,3],quotes),row([0,null],['',...quotes])]}:object({id:{type:'integer',enum:ids},score,quote:string,reason:string});
+};
 export const schemas = {
   actor:object({reply:string,stageIds:array({type:'integer',enum:[1,2,3,4,5]}),complete:{type:'boolean'}}),
-  grade:ids=>object({scores:array(scoreRow(ids))}),
-  final:ids=>object({scores:array(scoreRow(ids)),summary:string,strengths:array(object({text:string,quote:string})),growth:string,outcome:{enum:['achieved','partial','not_achieved']}}),
+  grade:(ids,quotes)=>object({scores:array(scoreRow(ids,quotes))}),
+  final:(ids,quotes)=>object({scores:array(scoreRow(ids,quotes)),summary:string,strengths:array(object({text:string,quote:quotes?.length?{type:'string',enum:quotes}:string})),growth:string,outcome:{enum:['achieved','partial','not_achieved']}}),
   plan:ids=>object({focusIds:array({type:'integer',enum:ids}),goal:string,weeks:array(object({action:string,proof:string})),completion:string}),
   hint:object({text:string}),
   connection:object({ok:{type:'boolean'}})
