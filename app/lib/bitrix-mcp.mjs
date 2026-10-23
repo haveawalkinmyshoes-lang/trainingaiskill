@@ -60,5 +60,7 @@ export function createBitrixLoginSender({url=process.env.BITRIX_MCP_URL,token=pr
   let client;
   try{client=new BitrixMcp({url,token,fetcher});}
   catch(error){return async()=>{throw failure(error.message);};}
-  return input=>client.sendLoginCode(input);
+  const sender=input=>client.sendLoginCode(input);
+  sender.lookupEmployee=async email=>{const employee=await client.findEmployee(email);return {id:String(employee.ID),position:typeof employee.WORK_POSITION==='string'?employee.WORK_POSITION.trim():''};};
+  return sender;
 }

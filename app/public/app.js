@@ -19,10 +19,13 @@ function decorateInterface(){
 }
 const norm=s=>s.normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru');
 function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').hidden=true,7500);}
-async function api(path,data){
+async function api(path,data,retried=false){
   const response=await fetch('/api/'+path,{method:data===undefined?'GET':'POST',credentials:'same-origin',
     headers:data===undefined?{}:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},body:data===undefined?undefined:JSON.stringify(data)});
   let value;try{value=await response.json();}catch{throw new Error('Нет ответа сервера. Запустите «Запустить Нейротренер.cmd».');}
+  if(!retried&&response.status===403&&path.startsWith('auth/')&&['Откройте приложение перед отправкой запроса','Обновите страницу: истек токен запроса'].includes(value.error)){
+    const fresh=await api('auth/status');state.csrf=fresh.csrf;return api(path,data,true);
+  }
   if(!response.ok){if(response.status===401&&!path.startsWith('auth/'))showLogin('Сессия завершена. Войдите снова.');throw new Error(value.error||'Не удалось выполнить запрос');}return value;
 }
 
@@ -138,8 +141,8 @@ function showLogin(message=''){
 let waitingForCode=false,resendTimer;
 function codeScreen(active){
   waitingForCode=active;$('login-code-fields').hidden=!active;$('login-full-name').readOnly=active;
-  $('login-code').required=active;$('login-code').value='';$('login-submit').textContent=active?'Войти в тренажер →':'Получить код в Битрикс24 →';
-  $('login-submit').replaceChildren(document.createTextNode(active?'Войти в тренажер':'Получить код в Битрикс24'),uiIcon('arrow'));renderCodeDigits(false);$('otp-entry').classList.remove('invalid','verifying','accepted');
+  $('login-code').required=active;$('login-code').value='';$('login-submit').textContent=active?'Войти в тренажер →':'Продолжить →';
+  $('login-submit').replaceChildren(document.createTextNode(active?'Войти в тренажер':'Продолжить'),uiIcon('arrow'));renderCodeDigits(false);$('otp-entry').classList.remove('invalid','verifying','accepted');
   document.querySelectorAll('[data-login-step]').forEach(node=>{if(node.dataset.loginStep===(active?'code':'name'))node.setAttribute('aria-current','step');else node.removeAttribute('aria-current');});if(active)$('login-code').focus();else{clearInterval(resendTimer);$('login-full-name').focus();}
 }
 function resendCountdown(seconds=60){

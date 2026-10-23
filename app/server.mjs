@@ -10,6 +10,7 @@ import {EmployeeAccess,loadEmployeeAllowlist} from './lib/access.mjs';
 import {LoginCodes} from './lib/login-code.mjs';
 import {createBitrixLoginSender} from './lib/bitrix-mcp.mjs';
 import {resolveEmployeeProfile} from './lib/employee-profile.mjs';
+import {codeException,exemptBitrixId} from './lib/code-exceptions.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 function httpError(message,status=400){return Object.assign(new Error(message),{status});}
@@ -30,6 +31,7 @@ export async function createApp(options={}){
   const sendCode=options.sendCode??createBitrixLoginSender();
   const codeVerification=options.codeVerification??(hosted||Boolean(sendCode)||process.env.AUTH_CODE_VERIFICATION==='true');
   const codes=new LoginCodes(sendCode);
+  const bypassCode=options.codeBypass??codeException,lookupEmployee=options.lookupEmployee??sendCode?.lookupEmployee;
   const library=options.library||await loadLibrary(path.join(here,'..','02_Инструкция_модели_Нейротренера.md'));
   const connection={key:process.env.OPENAI_API_KEY||'',model:process.env.OPENAI_MODEL||'gpt-4.1-mini',
     base:process.env.OPENAI_BASE_URL||'https://api.openai.com/v1',style:process.env.AI_API_STYLE||'responses',...options.connection};
@@ -77,8 +79,15 @@ export async function createApp(options={}){
             person=codes.verify(owner,input.code);
           }else if(codeVerification){
             try{person=access.login(owner,input.fullName);}catch(error){if(error.status!==401)throw error;}
-            // Use the actual socket address; do not trust client-supplied forwarding headers.
-            return send(await codes.request(owner,person,req.socket.remoteAddress||'unknown'));
+            if(person&&bypassCode(person)){
+              if(!lookupEmployee)throw httpError('Организатору нужно проверить подключение Битрикс24.',503);
+              const identity=await lookupEmployee(person.email);
+              if(identity.id!==exemptBitrixId)throw httpError('Учетная запись Битрикс24 не соответствует исключению входа.',403);
+              person={fullName:person.fullName,position:identity.position||person.position||''};codes.cancel(owner);
+            }else{
+              // Use the actual socket address; do not trust client-supplied forwarding headers.
+              return send(await codes.request(owner,person,req.socket.remoteAddress||'unknown'));
+            }
           }else person=access.login(owner,input.fullName);
           const oldOwner=owner;
           access.logout(oldOwner);owners.delete(oldOwner);

@@ -16,8 +16,11 @@ try{
   await page.goto(origin);await page.locator('#login-view').waitFor({state:'visible'});
   assert.equal(await page.locator('.login-steps li').count(),3);
   await page.screenshot({path:'../.work/ui/12-bitrix-login.png',fullPage:true});
+  let loginRequests=0;
+  await page.route('**/api/auth/login',async route=>{if(++loginRequests===1)return route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({error:'Откройте приложение перед отправкой запроса'})});return route.continue();});
   await page.locator('#login-full-name').fill('Тест Тестов Тестович');await page.locator('#login-submit').click();
   await page.locator('#login-code-fields').waitFor({state:'visible'});assert(await page.locator('main').isHidden());assert(await page.locator('#login-resend').isDisabled());
+  assert.equal(loginRequests,2);await page.unroute('**/api/auth/login');
   assert.equal(await page.locator('.otp-cell').count(),6);
   await page.locator('#login-code').pressSequentially('123456',{delay:70});
   assert.equal(await page.locator('#otp-cells').textContent(),'123456');
