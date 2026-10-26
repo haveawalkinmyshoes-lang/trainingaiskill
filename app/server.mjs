@@ -58,7 +58,7 @@ export async function createApp(options={}){
       ai:{configured:Boolean(connection.key),model:connection.model,style:connection.style,callsInCurrentWindow:aiCalls,windowStartedAt:new Date(usageStart).toISOString(),limitPerDay:Number(process.env.MAX_AI_CALLS_PER_DAY||200),lastFailure:lastAIFailure,lastSuccessAt:lastAISuccessAt},
       access:{required:access.required,allowlistConfigured:access.people.size>0,codeVerification,bitrixConfigured:Boolean(sendCode)},
       dataStorage:'in_memory_reset_on_restart'}),
-    checkAI:async(args={})=>{if(args.roleplay)return checkRoleplay(library,connection,call);const result=await call({...connection},'Верни JSON {"ok":true}. Это проверка соединения.',{},schemas.connection,'trainer_bridge_connection');if(result.ok!==true)throw httpError('ИИ не подтвердил соединение',502);return {ok:true};},
+    checkAI:async(args={})=>{const tested={...connection,...(args.model?{model:args.model}:{})};if(args.roleplay)return checkRoleplay(library,tested,call);const result=await call(tested,'Верни JSON {"ok":true}. Это проверка соединения.',{},schemas.connection,'trainer_bridge_connection');if(result.ok!==true)throw httpError('ИИ не подтвердил соединение',502);return {ok:true,model:tested.model};},
     ...(options.bridgeFetch?{fetchImpl:options.bridgeFetch}:{})});
   const server=http.createServer(async(req,res)=>{
     if(String(req.url||'').split('?')[0]==='/mcp')bridge.observe(req,res);

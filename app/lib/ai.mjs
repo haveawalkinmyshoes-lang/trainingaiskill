@@ -31,8 +31,10 @@ export async function structuredCall(connection, instruction, data, schema, name
   if(!Array.isArray(conversation)||conversation.some(m=>!['user','assistant'].includes(m.role)||typeof m.content!=='string'))throw new Error('Некорректные роли сообщений');
   const messages = [{role:'system',content:instruction},{role:'user',content:JSON.stringify(data)},...conversation];
   const chat = connection.style === 'chat';
-  const body = chat ? {model:connection.model,messages,max_completion_tokens:3000,response_format:{type:'json_schema',json_schema:{name,strict:true,schema}}} :
-    {model:connection.model,input:messages,store:false,max_output_tokens:3000,text:{format}};
+  const sol=connection.model==='gpt-6.1-sol',effort=connection.reasoningEffort||'low',outputLimit=sol?8000:3000;
+  if(sol&&!['low','medium','high','xhigh','max'].includes(effort))throw apiFailure('Для gpt-6.1-sol укажите reasoning effort: low, medium, high, xhigh или max.','request');
+  const body = chat ? {model:connection.model,messages,max_completion_tokens:outputLimit,response_format:{type:'json_schema',json_schema:{name,strict:true,schema}},...(sol?{reasoning_effort:effort}:{})} :
+    {model:connection.model,input:messages,store:false,max_output_tokens:outputLimit,text:{format},...(sol?{reasoning:{effort}}:{})};
   let response;
   try {
     response = await fetchImpl(connection.base.replace(/\/$/,'')+(chat?'/chat/completions':'/responses'), {

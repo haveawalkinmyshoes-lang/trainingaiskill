@@ -83,6 +83,12 @@ test('Проверка ролей: только подтвержденные ф�
   const result=await rpc('tools/call',{name:'trainer_check_ai',arguments:{confirm:true,roleplay:true}});assert(!result.data.result.isError);const data=JSON.parse(result.data.result.content[0].text);assert.equal(data.calls,3);assert.equal(count,3);assert.equal(app.trainer.sessions.size,0);assert.equal(app.journal.records.size,0);
   const repeated=await rpc('tools/call',{name:'trainer_check_ai',arguments:{confirm:true,roleplay:true}});assert(repeated.data.result.isError);assert.equal(count,3);
 });
+
+test('Предварительная проверка Sol допускает только выбранную модель и не меняет рабочую конфигурацию',async t=>{
+  let calls=0;const {rpc,tool}=await fixture(t,{call:async connection=>{calls++;assert.equal(connection.model,'gpt-6.1-sol');return {ok:true};}});const previous=(await tool('trainer_status')).value.ai.model;
+  assert.equal((await rpc('tools/call',{name:'trainer_check_ai',arguments:{confirm:true,model:'arbitrary-model'}})).data.error.code,-32602);assert.equal(calls,0);
+  const checked=await tool('trainer_check_ai',{confirm:true,model:'gpt-6.1-sol'});assert(checked.value.ok);assert.equal(checked.value.model,'gpt-6.1-sol');assert.equal((await tool('trainer_status')).value.ai.model,previous);assert.equal(calls,1);
+});
 test('Render: только фиксированный сервис, без произвольных URL, секретов и повторной публикации',async t=>{
   const requests=[];
   const {rpc,tool}=await fixture(t,{bridgeSettings:{token,renderKey:'PRIVATE_RENDER_KEY',serviceId:'srv-test123',allowDeploy:true},bridgeFetch:async(url,options)=>{

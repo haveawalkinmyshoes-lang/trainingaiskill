@@ -40,6 +40,7 @@ await page.locator('[data-scenario="TM01"]').click();
 await page.screenshot({path:'../.work/ui/02-selection.png',fullPage:true});
 await page.locator('#start-session').click();
 await page.locator('#chat-view').waitFor({state:'visible'});
+assert.equal(await page.locator('.chat-column #chat-end-actions #finish-session').count(),1);assert.equal(await page.locator('.chat-heading #finish-session').count(),0);assert(await page.locator('#finish-session').evaluate(button=>button.getBoundingClientRect().top>=document.querySelector('#message-form').getBoundingClientRect().bottom));
 await page.locator('#message-input').fill('К какому реальному сроку нужна выгрузка и для чего?');
 await page.locator('#send-message').click();
 await page.waitForFunction(()=>document.querySelectorAll('.score-card').length===1&&!document.querySelector('#message-input').disabled);
