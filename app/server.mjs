@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { loadLibrary, publicCatalog, availableScenarios } from './lib/domain.mjs';
+import { loadLibrary, publicCatalog, availableScenarios, route } from './lib/domain.mjs';
 import { safeConnection, structuredCall, schemas, safeAIFailure } from './lib/ai.mjs';
 import { Trainer } from './lib/trainer.mjs';
 import {EmployeeAccess,loadEmployeeAllowlist} from './lib/access.mjs';
@@ -12,6 +12,7 @@ import {createBitrixLoginSender} from './lib/bitrix-mcp.mjs';
 import {resolveEmployeeProfile} from './lib/employee-profile.mjs';
 import {codeException,exemptBitrixId} from './lib/code-exceptions.mjs';
 import {bridgeSettings,createAdminBridge} from './lib/admin-bridge.mjs';
+import {PracticeJournal} from './lib/practice-journal.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 function httpError(message,status=400){return Object.assign(new Error(message),{status});}
@@ -48,7 +49,9 @@ export async function createApp(options={}){
     catch(error){lastAIFailure={at:new Date().toISOString(),...safeAIFailure(error)};throw error;}
   };
   const trainer=new Trainer(library,call),owners=new Map();
-  const bridge=createAdminBridge({settings:options.bridgeSettings??await bridgeSettings(),library,trainer,
+  const adminConfig=options.bridgeSettings??await bridgeSettings();
+  const journal=new PracticeJournal({secret:adminConfig.token,local:!hosted&&!access.required});
+  const bridge=createAdminBridge({settings:adminConfig,library,trainer,
     status:()=>({ok:true,revision:process.env.RENDER_GIT_COMMIT||'local',hosting:hosted?'production':'local',
       topics:library.config.ui.topic_selector.options,scenarioCount:library.config.scenarios.length,profileCount:library.config.job_profiles.length,
       ai:{configured:Boolean(connection.key),model:connection.model,style:connection.style,callsInCurrentWindow:aiCalls,windowStartedAt:new Date(usageStart).toISOString(),limitPerDay:Number(process.env.MAX_AI_CALLS_PER_DAY||200),lastFailure:lastAIFailure,lastSuccessAt:lastAISuccessAt},
@@ -102,14 +105,14 @@ export async function createApp(options={}){
             }
           }else person=access.login(owner,input.fullName);
           const oldOwner=owner;
-          access.logout(oldOwner);owners.delete(oldOwner);
+          access.logout(oldOwner);journal.logout(oldOwner);owners.delete(oldOwner);
           for(const [id,s]of trainer.sessions)if(s.owner===oldOwner)trainer.sessions.delete(id);
           owner=randomBytes(24).toString('hex');owners.set(owner,randomBytes(24).toString('hex'));access.grant(owner,person);
           res.setHeader('Set-Cookie',`nt_owner=${owner}; HttpOnly; SameSite=Strict; Path=/${hosted?'; Secure':''}`);
           return send(accessStatus());
         }
         if(req.method==='POST'&&url.pathname==='/api/auth/logout'){
-          await body(req);access.logout(owner);codes.cancel(owner);owners.delete(owner);
+          await body(req);access.logout(owner);codes.cancel(owner);journal.logout(owner);owners.delete(owner);
           for(const [id,s]of trainer.sessions)if(s.owner===owner)trainer.sessions.delete(id);
           res.setHeader('Set-Cookie',`nt_owner=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${hosted?'; Secure':''}`);
           return send({ok:true});
@@ -123,7 +126,24 @@ export async function createApp(options={}){
         };
         if(req.method==='GET'&&url.pathname==='/api/bootstrap'){
           const catalog=publicCatalog(library.config),devProfile=!employee&&!hosted?catalog.profiles.find(p=>p.id==='ROLE_026'):null;
-          return send({...catalog,employeeProfile:assignment?catalog.profiles.find(p=>p.id===assignment.profile.id):devProfile,employeePosition:assignment?.position||'',profileMatch:assignment?.match||null,csrf:owners.get(owner),connection:safeConnection(connection),hosting:{managed:hosted}});
+          return send({...catalog,employeeProfile:assignment?catalog.profiles.find(p=>p.id===assignment.profile.id):devProfile,employeePosition:assignment?.position||'',profileMatch:assignment?.match||null,csrf:owners.get(owner),connection:safeConnection(connection),hosting:{managed:hosted},practice:{storage:journal.storage(),adminAvailable:Boolean(journal.adminCode)||journal.local,adminAuthorized:journal.authorized(owner)}});
+        }
+        const participant=()=>journal.person(employee,owner),query=()=>({period:url.searchParams.get('period')||'30',topic:url.searchParams.get('topic')||''});
+        if(req.method==='GET'&&url.pathname==='/api/history')return send(journal.history(participant(),query()));
+        if(req.method==='GET'&&url.pathname==='/api/leaderboard')return send(journal.leaderboard(participant(),query()));
+        if(req.method==='POST'&&url.pathname==='/api/admin/login'){const input=await body(req);return send(journal.loginAdmin(owner,input.code));}
+        if(req.method==='GET'&&url.pathname==='/api/analytics'){
+          if(!journal.authorized(owner))throw httpError('Для аналитики нужен код администратора',403);
+          return send(journal.analytics(query()));
+        }
+        if(url.pathname==='/api/feedback'){
+          if(req.method==='GET')return send(journal.ownFeedback(participant(),url.searchParams.get('scenario')));
+          if(req.method==='POST'){
+            const input=await body(req),scenario=library.config.scenarios.find(s=>s.id===input.scenarioId);
+            if(!scenario)throw httpError('Упражнение не найдено',404);
+            route(library.config,scenario.topic,personalProfile()||(!hosted?'ROLE_026':null),scenario.id);
+            return send(journal.feedback(participant(),scenario,input));
+          }
         }
         if(req.method==='GET'&&url.pathname==='/api/scenarios')return send({scenarios:availableScenarios(library.config,url.searchParams.get('topic'),personalProfile())});
         if(req.method==='POST'&&url.pathname==='/api/settings'){
@@ -149,7 +169,7 @@ export async function createApp(options={}){
           if(assignment||employee&&(hosted||codeVerification))input.profileId=personalProfile();
           input.difficulty='начальный';
           const result=trainer.start(owner,input,connection);
-          trainer.get(result.id,owner).employee=access.current(owner);
+          const session=trainer.get(result.id,owner);session.employee=access.current(owner);journal.capture(session);
           return send(result,201);
         }
         const match=url.pathname.match(/^\/api\/sessions\/([a-f0-9-]+)(?:\/(turn|hint|finalize|plan))?$/);
@@ -158,15 +178,16 @@ export async function createApp(options={}){
           if(req.method==='GET'&&!match[2])return send(trainer.view(s));
           if(req.method==='POST'){
             const input=await body(req);
-            if(match[2]==='turn')return send(await trainer.turn(s,input.message,input.requestId));
-            if(match[2]==='hint')return send(await trainer.hint(s));
-            if(match[2]==='finalize')return send(await trainer.finalize(s));
-            if(match[2]==='plan')return send(await trainer.plan(s,input.answers));
+            if(['turn','hint','finalize','plan'].includes(match[2])){
+              const result=match[2]==='turn'?await trainer.turn(s,input.message,input.requestId):match[2]==='hint'?await trainer.hint(s):match[2]==='finalize'?await trainer.finalize(s):await trainer.plan(s,input.answers);
+              journal.capture(s);return send(result);
+            }
           }
         }
         throw httpError('Маршрут не найден',404);
       }
       const assets={'/':['index.html','text/html'],'/index.html':['index.html','text/html'],'/app.js':['app.js','text/javascript'],'/styles.css':['styles.css','text/css'],'/favicon.svg':['favicon.svg','image/svg+xml']};
+      assets['/workspace.js']=['workspace.js','text/javascript'];assets['/workspace.css']=['workspace.css','text/css'];
       // Only the eight packaged portraits are public; no arbitrary file paths.
       for(const gender of ['female','male'])for(let i=1;i<=4;i++){const name=gender+'-0'+i+'.webp';assets['/avatars/'+name]=['avatars/'+name,'image/webp'];}
       if(req.method!=='GET'&&req.method!=='HEAD')throw httpError('Метод не поддерживается',405);
@@ -175,7 +196,7 @@ export async function createApp(options={}){
       res.writeHead(200,{'Content-Type':asset[1]+'; charset=utf-8'});res.end(req.method==='HEAD'?undefined:content);
     }catch(error){bridge.recordError(error,req);if(!res.headersSent)send({error:error.message||'Не удалось обработать запрос'},error.status||400);else res.end();}
   });
-  return {server,trainer,access};
+  return {server,trainer,access,journal};
 }
 if(process.argv[1]&&pathToFileURL(path.resolve(process.argv[1])).href===import.meta.url){
   await envFile();
