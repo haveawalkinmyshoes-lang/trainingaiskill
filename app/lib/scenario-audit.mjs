@@ -16,7 +16,7 @@ export class ScenarioAudit{
     this.version=createHash('sha256').update(JSON.stringify({config:library.config,fixtures:this.fixtures.map(f=>({id:f.scenario.id,profile:f.profile.id,messages:f.fixture.messages})),instructions:this.fixtures.map(f=>actorInstruction({scenario:f.scenario,profile:f.profile}))})).digest('hex');
   }
   status(){return {scope:'synthetic_scenario_audit',version:this.version,model:this.connection.model,startedAt:this.startedAt,scenarioCount:this.fixtures.length,completed:[...this.records.values()].filter(r=>r.status==='complete').length,errors:[...this.records.values()].filter(r=>r.status==='error').length,running:this.inFlight.size,plannedMaximumCalls:this.fixtures.reduce((n,f)=>n+f.fixture.messages.length+1,0),calls:this.calls,costUSD:Number(this.costUSD.toFixed(6)),usage:{...this.usage},unknownUsage:this.unknownUsage,limits:{calls:this.maxCalls,costUSD:this.maxUSD},method:'Fixed reference learner messages; live production actor with role repair; live final assessor. Step grades and monthly plans are not generated. No employee sessions or journal records.'};}
-  async paid(args,record){
+  async paid(args,record,attempt=0){
     if(this.connection.model!=='gpt-6.1-sol')throw fail('Аудит настроен на gpt-6.1-sol',409);
     if(this.calls>=this.maxCalls)throw fail('Достигнут лимит запросов аудита',429);
     const inputBytes=Buffer.byteLength(String(args[1])+JSON.stringify(args[2])+JSON.stringify(args[3])+JSON.stringify(args[6]?.conversation||[]),'utf8')+2000;
@@ -29,7 +29,8 @@ export class ScenarioAudit{
       charge=(Math.max(0,input-cached-writes)*2+cached*.1+writes*2.5+output*10)/1000000;
       this.costUSD+=charge;record.costUSD+=charge;for(const [key,value]of Object.entries({input,cached,cacheWrite:writes,output,reasoning}))this.usage[key]+=value;measured=true;
     }};
-    try{return await this.call(...args);}finally{this.reservedUSD-=reserve;if(!measured){this.unknownUsage++;this.costUSD+=reserve;record.costUSD+=reserve;}record.requests.push({kind:args[4],durationMs:Date.now()-timing,costUSD:Number(charge.toFixed(6)),usageKnown:measured});}
+    let result,error;try{result=await this.call(...args);}catch(caught){error=caught;}finally{this.reservedUSD-=reserve;if(!measured){this.unknownUsage++;this.costUSD+=reserve;record.costUSD+=reserve;}record.requests.push({kind:args[4],durationMs:Date.now()-timing,costUSD:Number(charge.toFixed(6)),usageKnown:measured});}
+    if(error){const f=error.aiFailure;if(attempt===0&&(f?.kind==='timeout'||f?.kind==='network'||f?.kind==='provider'&&f.httpStatus>=500)){record.flags.push('transient_api_retry');return this.paid(args,record,1);}throw error;}return result;
   }
   async one(item){
     const id=item.scenario.id;if(this.records.has(id))return this.records.get(id);if(this.inFlight.has(id))return this.inFlight.get(id);

@@ -16,6 +16,10 @@ test('Аудит вызывает живой путь персонажа и фи
 test('Защитный бюджет и лимит запросов останавливают только аудит; ошибка сохраняется честно',async()=>{
   const counter={count:0},audit=new ScenarioAudit(library,{key:'fixture',model:'gpt-6.1-sol'},fakeProvider(counter),{maxUSD:0});const output=await audit.run({action:'run',offset:0,limit:1});assert.equal(output.cases[0].status,'error');assert.match(output.cases[0].error,/бюджет/);assert.equal(counter.count,0);assert.equal(output.cases[0].report,null);
 });
+
+test('Один временный отказ API повторяется без потери диалога и без маскировки неизвестного usage',async()=>{
+  const counter={count:0},base=fakeProvider(counter);let failed=false;const audit=new ScenarioAudit(library,{key:'fixture',model:'gpt-6.1-sol'},async(...args)=>{if(!failed){failed=true;counter.count++;throw Object.assign(new Error('Temporary failure'),{aiFailure:{kind:'provider',httpStatus:503}});}return base(...args);});const output=await audit.run({action:'run',offset:0,limit:1});assert.equal(output.cases[0].status,'complete');assert.equal(counter.count,5);assert.equal(output.status.unknownUsage,1);assert(output.cases[0].flags.includes('transient_api_retry'));
+});
 test('API аудита закрыт ключом моста, требует confirm, отвергает произвольные данные и не создает записи сотрудников',async t=>{
   const token='audit-private-fixture-token-12345678901234567890',counter={count:0};const app=await createApp({accessRequired:true,employeeAllowlist:[],bridgeSettings:{token},connection:{key:'fixture',model:'gpt-6.1-sol'},call:fakeProvider(counter)});app.server.listen(0,'127.0.0.1');await once(app.server,'listening');t.after(()=>{app.server.closeAllConnections();app.server.close();});const base='http://127.0.0.1:'+app.server.address().port;
   const rpc=async(argumentsValue,auth=token)=>{const r=await fetch(base+'/mcp',{method:'POST',headers:{Authorization:'Bearer '+auth,'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'trainer_audit_scenarios',arguments:argumentsValue}})});return {status:r.status,data:await r.json()};};
