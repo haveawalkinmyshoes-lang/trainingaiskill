@@ -67,6 +67,7 @@ export async function structuredCall(connection, instruction, data, schema, name
     throw apiFailure(map[response.status] || `Ошибка сервиса ИИ (${response.status}). Ход не сохранен.`,({401:'authentication',403:'access',400:'request',404:'not_found'})[response.status]||'provider',response.status);
   }
   const result=await response.json();
+  if(typeof transport.onUsage==='function'&&result.usage)transport.onUsage(result.usage);
   let raw;
   if (chat) {
     const message=result.choices?.[0]?.message;

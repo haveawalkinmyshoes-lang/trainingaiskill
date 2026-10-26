@@ -18,7 +18,7 @@ export async function bridgeSettings(env=process.env){
   return {token:env.TRAINER_BRIDGE_TOKEN||values.TRAINER_BRIDGE_TOKEN||'',renderKey:env.RENDER_API_KEY||values.RENDER_API_KEY||'',
     serviceId:env.RENDER_SERVICE_ID||values.RENDER_SERVICE_ID||'',allowDeploy:(env.TRAINER_BRIDGE_ALLOW_DEPLOY||values.TRAINER_BRIDGE_ALLOW_DEPLOY)==='true'};
 }
-export function createAdminBridge({settings,library,trainer,status,checkAI,fetchImpl=fetch,now=Date.now}){
+export function createAdminBridge({settings,library,trainer,status,checkAI,runAudit,fetchImpl=fetch,now=Date.now}){
   const startedAt=now(),events=[],connections=[];
   let windowStart=now(),requests=0,busy=false,lastAI=-Infinity,lastRoleplay=-Infinity,lastDeploy=-Infinity;
   const enabled=typeof settings.token==='string'&&settings.token.length>=32;
@@ -95,6 +95,7 @@ export function createAdminBridge({settings,library,trainer,status,checkAI,fetch
       return {deploys:data.slice(0,5).map(x=>cleanDeploy(x.deploy))};
     }}
   ];
+  if(runAudit)tools.push({name:'trainer_audit_scenarios',description:'Платная симуляция всех 45 сценариев ТОЛЬКО по явной просьбе пользователя провести такой аудит. confirm=true. action=status читает прогресс; action=run запускает до трех фиксированных синтетических сценариев с offset 0–44 и limit 1–3. Кэширует результаты, повтор не делает новых вызовов. Лимиты: 200 запросов и расчетный защитный бюджет $5 на процесс. Не принимает произвольные промпты, не читает сотрудников, не создает прохождений или отзывов.',inputSchema:{...schema({confirm:{type:'boolean',const:true},action:{type:'string',enum:['status','run']},offset:{type:'integer',minimum:0,maximum:44},limit:{type:'integer',minimum:1,maximum:3}}),required:['confirm','action']},mutating:true,run:runAudit});
   if(settings.allowDeploy)tools.push({name:'trainer_render_deploy',description:'Запустить публикацию последнего коммита настроенного сервиса Render. Использовать только после явного указания пользователя опубликовать. confirm=true. Вернет queued, а не подтверждение успешной публикации. Не чаще раза в 5 минут.',inputSchema:{...schema({confirm:{type:'boolean',const:true}}),required:['confirm']},mutating:true,run:async()=>{
     if(now()-lastDeploy<300000)throw failure('Повторная публикация разрешена через 5 минут',429);
     lastDeploy=now();return {accepted:true,deploy:cleanDeploy(await renderRequest('POST'))};
@@ -108,6 +109,7 @@ export function createAdminBridge({settings,library,trainer,status,checkAI,fetch
       const s=inputSchema.properties[k];if(s.type==='string'&&(typeof v!=='string'||v.length>(s.maxLength||120)||v.length<(s.minLength||0)))return false;
       if(s.type==='integer'&&(!Number.isInteger(v)||v<s.minimum||v>s.maximum))return false;
       if(s.type==='boolean'&&typeof v!=='boolean')return false;
+      if(s.enum&&!s.enum.includes(v))return false;
       return s.const===undefined||v===s.const;
     });
   }

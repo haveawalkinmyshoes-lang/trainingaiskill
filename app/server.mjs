@@ -14,6 +14,7 @@ import {codeException,exemptBitrixId} from './lib/code-exceptions.mjs';
 import {bridgeSettings,createAdminBridge} from './lib/admin-bridge.mjs';
 import {PracticeJournal} from './lib/practice-journal.mjs';
 import {checkRoleplay} from './lib/roleplay-check.mjs';
+import {ScenarioAudit} from './lib/scenario-audit.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 function httpError(message,status=400){return Object.assign(new Error(message),{status});}
@@ -52,7 +53,9 @@ export async function createApp(options={}){
   const trainer=new Trainer(library,call),owners=new Map();
   const adminConfig=options.bridgeSettings??await bridgeSettings();
   const journal=new PracticeJournal({secret:adminConfig.token,local:!hosted&&!access.required});
+  let audit;
   const bridge=createAdminBridge({settings:adminConfig,library,trainer,
+    runAudit:args=>{audit??=new ScenarioAudit(library,connection,call);return audit.run(args);},
     status:()=>({ok:true,revision:process.env.RENDER_GIT_COMMIT||'local',hosting:hosted?'production':'local',
       topics:library.config.ui.topic_selector.options,scenarioCount:library.config.scenarios.length,profileCount:library.config.job_profiles.length,
       ai:{configured:Boolean(connection.key),model:connection.model,style:connection.style,callsInCurrentWindow:aiCalls,windowStartedAt:new Date(usageStart).toISOString(),limitPerDay:Number(process.env.MAX_AI_CALLS_PER_DAY||200),lastFailure:lastAIFailure,lastSuccessAt:lastAISuccessAt},

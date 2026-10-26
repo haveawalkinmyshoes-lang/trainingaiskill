@@ -39,7 +39,7 @@ test('MCP initialize/list/call/notifications работают; некоррек�
   const {base,rpc}=await fixture(t);
   const initialized=await rpc('initialize',{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'test',version:'1'}});
   assert.equal(initialized.data.result.protocolVersion,'2025-06-18');
-  const list=await rpc('tools/list');assert.equal(list.data.result.tools.length,8);
+  const list=await rpc('tools/list');assert.equal(list.data.result.tools.length,9);
   assert(!list.data.result.tools.some(t=>t.name==='trainer_render_deploy'));
   assert(list.data.result.tools.find(t=>t.name==='trainer_status').annotations.readOnlyHint);
   assert.equal((await rpc('tools/call',{name:'shell',arguments:{cmd:'env'}})).data.error.code,-32602);
