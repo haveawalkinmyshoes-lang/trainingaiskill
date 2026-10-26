@@ -30,7 +30,7 @@ export class ScenarioAudit{
       this.costUSD+=charge;record.costUSD+=charge;for(const [key,value]of Object.entries({input,cached,cacheWrite:writes,output,reasoning}))this.usage[key]+=value;measured=true;
     }};
     let result,error;try{result=await this.call(...args);}catch(caught){error=caught;}finally{this.reservedUSD-=reserve;if(!measured){this.unknownUsage++;this.costUSD+=reserve;record.costUSD+=reserve;}record.requests.push({kind:args[4],durationMs:Date.now()-timing,costUSD:Number(charge.toFixed(6)),usageKnown:measured});}
-    if(error){const f=error.aiFailure;if(attempt===0&&(f?.kind==='timeout'||f?.kind==='network'||f?.kind==='provider'&&f.httpStatus>=500)){record.flags.push('transient_api_retry');return this.paid(args,record,1);}throw error;}return result;
+    if(error){const f=error.aiFailure;if(attempt<2&&(f?.kind==='timeout'||f?.kind==='network'||f?.kind==='provider'&&f.httpStatus>=500)){if(!record.flags.includes('transient_api_retry'))record.flags.push('transient_api_retry');await new Promise(resolve=>setTimeout(resolve,1000*(attempt+1)));return this.paid(args,record,attempt+1);}throw error;}return result;
   }
   async one(item){
     const id=item.scenario.id;if(this.records.has(id))return this.records.get(id);if(this.inFlight.has(id))return this.inFlight.get(id);
