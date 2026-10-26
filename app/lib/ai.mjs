@@ -24,10 +24,12 @@ export const schemas = {
   hint:object({text:string}),
   connection:object({ok:{type:'boolean'}})
 };
-export async function structuredCall(connection, instruction, data, schema, name, fetchImpl=fetch) {
+export async function structuredCall(connection, instruction, data, schema, name, fetchImpl=fetch, transport={}) {
   if (!connection.key) throw apiFailure('Подключите ИИ в настройках: нужен API-ключ','not_configured');
   const format = {type:'json_schema',name,strict:true,schema};
-  const messages = [{role:'system',content:instruction},{role:'user',content:JSON.stringify(data)}];
+  const conversation=transport.conversation||[];
+  if(!Array.isArray(conversation)||conversation.some(m=>!['user','assistant'].includes(m.role)||typeof m.content!=='string'))throw new Error('Некорректные роли сообщений');
+  const messages = [{role:'system',content:instruction},{role:'user',content:JSON.stringify(data)},...conversation];
   const chat = connection.style === 'chat';
   const body = chat ? {model:connection.model,messages,max_completion_tokens:3000,response_format:{type:'json_schema',json_schema:{name,strict:true,schema}}} :
     {model:connection.model,input:messages,store:false,max_output_tokens:3000,text:{format}};

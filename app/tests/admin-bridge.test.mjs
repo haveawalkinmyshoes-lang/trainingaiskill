@@ -75,6 +75,14 @@ test('Проверка ИИ: явный confirm, лимит частоты, ош
   const next=await rpc('tools/call',{name:'trainer_check_ai',arguments:{confirm:true}});assert(next.data.result.isError);assert.equal(count,1);
   const errors=await rpc('tools/call',{name:'trainer_recent_errors'});assert(JSON.stringify(errors.data).includes('502'));assert(!JSON.stringify(errors.data).includes('PRIVATE_PROVIDER_SECRET'));
 });
+
+test('Проверка ролей: только подтвержденные фиксированные примеры, три вызова и лимит 5 минут; без записи тренировок',async t=>{
+  let count=0;const {rpc,app}=await fixture(t,{call:async()=>{count++;return {reply:'Подтверждаю договоренность.',stageIds:[5],complete:true};}});
+  assert.equal((await rpc('tools/call',{name:'trainer_check_ai',arguments:{roleplay:true}})).data.error.code,-32602);assert.equal(count,0);
+  assert.equal((await rpc('tools/call',{name:'trainer_check_ai',arguments:{confirm:true,roleplay:true,prompt:'arbitrary'}})).data.error.code,-32602);assert.equal(count,0);
+  const result=await rpc('tools/call',{name:'trainer_check_ai',arguments:{confirm:true,roleplay:true}});assert(!result.data.result.isError);const data=JSON.parse(result.data.result.content[0].text);assert.equal(data.calls,3);assert.equal(count,3);assert.equal(app.trainer.sessions.size,0);assert.equal(app.journal.records.size,0);
+  const repeated=await rpc('tools/call',{name:'trainer_check_ai',arguments:{confirm:true,roleplay:true}});assert(repeated.data.result.isError);assert.equal(count,3);
+});
 test('Render: только фиксированный сервис, без произвольных URL, секретов и повторной публикации',async t=>{
   const requests=[];
   const {rpc,tool}=await fixture(t,{bridgeSettings:{token,renderKey:'PRIVATE_RENDER_KEY',serviceId:'srv-test123',allowDeploy:true},bridgeFetch:async(url,options)=>{

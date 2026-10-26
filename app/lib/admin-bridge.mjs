@@ -20,7 +20,7 @@ export async function bridgeSettings(env=process.env){
 }
 export function createAdminBridge({settings,library,trainer,status,checkAI,fetchImpl=fetch,now=Date.now}){
   const startedAt=now(),events=[],connections=[];
-  let windowStart=now(),requests=0,busy=false,lastAI=-Infinity,lastDeploy=-Infinity;
+  let windowStart=now(),requests=0,busy=false,lastAI=-Infinity,lastRoleplay=-Infinity,lastDeploy=-Infinity;
   const enabled=typeof settings.token==='string'&&settings.token.length>=32;
   const digest=value=>createHash('sha256').update(value).digest();
   const authorized=req=>typeof req.headers.authorization==='string'&&req.headers.authorization.length<=1024&&req.headers.authorization.startsWith('Bearer ')&&timingSafeEqual(digest(req.headers.authorization.slice(7)),digest(settings.token));
@@ -85,9 +85,10 @@ export function createAdminBridge({settings,library,trainer,status,checkAI,fetch
       try{const ctx=route(library.config,scenario.topic,args.profileId,args.scenarioId);return {available:true,profileId:args.profileId,scenario:publicScenario(scenario,ctx.competencies)};}
       catch{return {available:false,reason:'Сценарий не соответствует области или компетенциям профиля',profileId:args.profileId,scenarioId:scenario.id};}
     }},
-    {name:'trainer_check_ai',description:'Платная проверка подключения ИИ одним небольшим запросом. Только по явной просьбе пользователя проверить ИИ; confirm=true обязателен. Не чаще раза в минуту.',inputSchema:{...schema({confirm:{type:'boolean',const:true}}),required:['confirm']},mutating:true,run:async()=>{
-      if(now()-lastAI<60000)throw failure('Повторите проверку через минуту',429);
-      lastAI=now();try{await checkAI();return {ok:true};}catch{throw failure('ИИ не подтвердил соединение: проверьте баланс, модель и настройки API. Секреты и исходный ответ скрыты.',502);}
+    {name:'trainer_check_ai',description:'Платная проверка ИИ только по явной просьбе пользователя; confirm=true обязателен. Обычно один запрос на подключение, не чаще раза в минуту. roleplay=true вместо него проверяет роли в трех фиксированных синтетических примерах (три запроса), не чаще раза в 5 минут; не читает и не создает тренировки сотрудников. Не принимает произвольные промпты.',inputSchema:{...schema({confirm:{type:'boolean',const:true},roleplay:{type:'boolean'}}),required:['confirm']},mutating:true,run:async args=>{
+      if(args.roleplay){if(now()-lastRoleplay<300000)throw failure('Повторите проверку ролей через 5 минут',429);lastRoleplay=now();}
+      else{if(now()-lastAI<60000)throw failure('Повторите проверку через минуту',429);lastAI=now();}
+      try{return await checkAI(args)||{ok:true};}catch{throw failure(args.roleplay?'Проверка ролей не завершена. Проверьте состояние API; секреты и исходная ошибка скрыты.':'ИИ не подтвердил соединение: проверьте баланс, модель и настройки API. Секреты и исходный ответ скрыты.',502);}
     }},
     {name:'trainer_render_deploys',description:'Статус последних пяти развертываний единственного настроенного сервиса Render. Нужны серверные RENDER_API_KEY и RENDER_SERVICE_ID.',inputSchema:empty,run:async()=>{
       const data=await renderRequest('GET');if(!Array.isArray(data))throw failure('Некорректный ответ Render',502);
