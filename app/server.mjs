@@ -36,7 +36,7 @@ export async function createApp(options={}){
   const codes=new LoginCodes(sendCode);
   const bypassCode=options.codeBypass??codeException,lookupEmployee=options.lookupEmployee??sendCode?.lookupEmployee;
   const library=options.library||await loadLibrary(path.join(here,'..','02_Инструкция_модели_Нейротренера.md'));
-  const connection={key:process.env.OPENAI_API_KEY||'',model:process.env.OPENAI_MODEL||'gpt-4.1-mini',
+  const connection={key:process.env.OPENAI_API_KEY||'',model:process.env.OPENAI_MODEL||'gpt-6.1-sol',
     base:process.env.OPENAI_BASE_URL||'https://api.openai.com/v1',style:process.env.AI_API_STYLE||'responses',...options.connection};
   let usageStart=Date.now(),aiCalls=0,lastAIFailure=null,lastAISuccessAt=null;
   const provider=options.call||structuredCall;
