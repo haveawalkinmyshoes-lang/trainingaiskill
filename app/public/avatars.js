@@ -12,13 +12,19 @@ export function avatarGender(name,explicit){
   const f=words.some(w=>femaleNames.has(w)),m=words.some(w=>maleNames.has(w));return f===m?null:f?'female':'male';
 }
 function candidates(name,gender){const start=hash(name)%4;return Array.from({length:4},(_,i)=>`/avatars/${gender}-0${(start+i)%4+1}.webp`);}
-export function accountPortrait(name,gender){const resolved=avatarGender(name,gender);return resolved?candidates(name,resolved)[0]:null;}
-export function avatarInitials(name){return String(name||'').split(',')[0].trim().split(/[\s-]+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toLocaleUpperCase('ru')||'Н';}
+export function alternatePortrait(name,gender,reserved=[]){const resolved=avatarGender(name,gender),choices=resolved?candidates(name,resolved):Array.from({length:portraitFiles.length},(_,i)=>portraitFiles[(hash(name)+i)%portraitFiles.length]);return choices.find(src=>!reserved.includes(src))||null;}
+export function accountPortrait(name,gender){return alternatePortrait(name,gender);}
+// These are presentation choices for fictional, unnamed characters, not inferred employee data.
+const characterGenders=new Map([
+  ['Директор по продажам','male'],['Тренер по SMART','female'],['Саша, новый специалист','male'],
+  ['Непосредственный руководитель','female'],['Коуч-оппонент','male'],['Коуч по рабочей рефлексии','female']
+].map(([name,gender])=>[normalize(name),gender]));
+export function characterGender(name,explicit){return avatarGender(name,explicit)||characterGenders.get(normalize(name))||(hash(name)%2?'female':'male');}
 export function scenarioPortraitPages(scenarios,reserved=null,pageSize=6){
   const pages=[];let page=[],used=new Set(reserved?[reserved]:[]);
   const next=()=>{if(page.length)pages.push(page);page=[];used=new Set(reserved?[reserved]:[]);};
   for(const scenario of scenarios){
-    const gender=avatarGender(scenario.character,scenario.gender),choices=gender?candidates(scenario.character,gender):[];
+    const gender=characterGender(scenario.character,scenario.gender),choices=candidates(scenario.character,gender);
     if(page.length>=pageSize||(choices.length&&choices.every(src=>used.has(src))))next();
     const src=choices.find(src=>!used.has(src))||null;if(src)used.add(src);
     page.push({scenario,src,gender});

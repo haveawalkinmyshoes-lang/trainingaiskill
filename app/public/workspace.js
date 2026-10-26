@@ -11,8 +11,17 @@ export function createWorkspaceUI({api,state,el,showView,newTraining,toast}) {
   $('show-result').querySelector('.nav-icon').replaceChildren(icon('report'));
   let requestedRoute=location.hash;
   let collapsed=false;try{collapsed=localStorage.getItem('nt-sidebar-collapsed')==='true';}catch{}
-  function collapse(){document.body.classList.toggle('sidebar-collapsed',collapsed);$('sidebar-toggle').setAttribute('aria-expanded',String(!collapsed));$('sidebar-toggle').title=collapsed?'Развернуть меню':'Свернуть меню';$('sidebar-toggle').setAttribute('aria-label',$('sidebar-toggle').title);}
-  collapse();$('sidebar-toggle').onclick=()=>{collapsed=!collapsed;collapse();try{localStorage.setItem('nt-sidebar-collapsed',String(collapsed));}catch{}};
+  const narrow=matchMedia('(max-width:960px)'),toggle=$('sidebar-toggle'),sidebar=document.querySelector('.sidebar');let mobileOpen=false;
+  sidebar.id='main-sidebar';toggle.setAttribute('aria-controls',sidebar.id);toggle.replaceChildren(icon('collapse'));toggle.querySelector('path').setAttribute('d','m14 6-6 6 6 6');document.body.append(toggle);
+  const backdrop=el('button','sidebar-backdrop');backdrop.id='sidebar-backdrop';backdrop.type='button';backdrop.setAttribute('aria-label','Закрыть меню');backdrop.hidden=true;document.body.append(backdrop);
+  const tooltip=el('div','sidebar-tooltip');tooltip.id='sidebar-tooltip';tooltip.role='tooltip';tooltip.hidden=true;document.body.append(tooltip);
+  function hideTip(){tooltip.hidden=true;sidebar.querySelector('[aria-describedby="sidebar-tooltip"]')?.removeAttribute('aria-describedby');}
+  function collapse(){const expanded=narrow.matches?mobileOpen:!collapsed;document.body.classList.toggle('sidebar-collapsed',collapsed);document.body.classList.toggle('sidebar-mobile-open',narrow.matches&&mobileOpen);toggle.classList.toggle('is-collapsed',!expanded);toggle.setAttribute('aria-expanded',String(expanded));toggle.title=expanded?'Свернуть меню':'Развернуть меню';toggle.setAttribute('aria-label',toggle.title);backdrop.hidden=!(narrow.matches&&mobileOpen);hideTip();}
+  collapse();toggle.onclick=()=>{if(narrow.matches)mobileOpen=!mobileOpen;else{collapsed=!collapsed;try{localStorage.setItem('nt-sidebar-collapsed',String(collapsed));}catch{}}collapse();};
+  const closeMobile=()=>{mobileOpen=false;collapse();};backdrop.onclick=closeMobile;narrow.addEventListener('change',closeMobile);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'){hideTip();if(mobileOpen){closeMobile();toggle.focus();}}});
+  sidebar.addEventListener('click',event=>{hideTip();if(narrow.matches&&event.target.closest('button,a'))closeMobile();});
+  for(const item of sidebar.querySelectorAll('.nav-item,#settings-open')){const label=item.getAttribute('aria-label')||item.title||'Настройки ИИ';item.setAttribute('aria-label',label);item.removeAttribute('title');const showTip=()=>{if(item.disabled||narrow.matches||!collapsed)return;const rect=item.getBoundingClientRect();tooltip.textContent=label;tooltip.style.left=rect.right+12+'px';tooltip.style.top=rect.top+rect.height/2+'px';tooltip.hidden=false;item.setAttribute('aria-describedby',tooltip.id);};item.addEventListener('mouseenter',showTip);item.addEventListener('focus',showTip);item.addEventListener('mouseleave',hideTip);item.addEventListener('blur',hideTip);}
   const panels={},filters={},contents={};let active='',serial=0;
   const button=(text,action,style='secondary-button')=>{const node=el('button',style,text);node.type='button';node.onclick=action;return node;};
   const date=value=>value?new Date(value).toLocaleDateString('ru-RU',{day:'2-digit',month:'short',year:'numeric'}):'—';
@@ -94,5 +103,5 @@ export function createWorkspaceUI({api,state,el,showView,newTraining,toast}) {
   const resultFeedback=button('Оставить отзыв',()=>openFeedback(state.session?.scenario));resultFeedback.id='result-feedback';document.querySelector('.result-heading-actions').append(resultFeedback);
   function fromHash(){if(!state.catalog||document.body.classList.contains('auth-locked'))return;const name=Object.keys(routes).find(n=>location.hash==='#/'+routes[n]);if(name&&active!==name)showView(name);}
   window.addEventListener('hashchange',fromHash);
-  return {activate(name){active=name;++serial;if(routes[name]){history.replaceState(null,'','#/'+routes[name]);load(name);}else if(location.hash)history.replaceState(null,'',location.pathname+location.search);},ready(){const hash=requestedRoute||location.hash,name=Object.keys(routes).find(n=>hash==='#/'+routes[n]);requestedRoute='';if(name)showView(name);else if(!state.session)showView('setup');},lock(){++serial;active='';for(const box of Object.values(contents))box.replaceChildren();recordDialog.close();feedbackDialog.close();}};
+  return {activate(name){active=name;++serial;if(routes[name]){history.replaceState(null,'','#/'+routes[name]);load(name);}else if(location.hash)history.replaceState(null,'',location.pathname+location.search);},ready(){const hash=requestedRoute||location.hash,name=Object.keys(routes).find(n=>hash==='#/'+routes[n]);requestedRoute='';if(name)showView(name);else if(!state.session)showView('setup');},lock(){++serial;active='';closeMobile();for(const box of Object.values(contents))box.replaceChildren();recordDialog.close();feedbackDialog.close();}};
 }

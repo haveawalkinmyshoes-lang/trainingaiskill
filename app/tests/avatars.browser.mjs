@@ -12,6 +12,8 @@ try{
   await mkdir('../.work/ui-avatars',{recursive:true});
   const base='http://127.0.0.1:'+app.server.address().port;let checkedPages=0;
   async function checkUnique(){
+    assert.equal(await page.locator('.portrait-neutral:visible').count(),0,'No letter placeholders');
+    assert.equal(await page.locator('.scenario-card:visible').count(),await page.locator('.scenario-card:visible img').count(),'Every visible scenario card must show a portrait');
     await page.waitForFunction(()=>[...document.querySelectorAll('img.portrait,img.portrait-small')].filter(n=>n.checkVisibility()).every(n=>n.complete&&n.naturalWidth>0));
     const images=await page.locator('img.portrait,img.portrait-small').evaluateAll(nodes=>nodes.filter(n=>n.checkVisibility()).map(n=>({src:n.getAttribute('src'),gender:n.dataset.avatarGender})));
     assert.equal(new Set(images.map(i=>i.src)).size,images.length,'Visible portraits must not repeat');for(const i of images)assert(i.src.includes('/'+i.gender+'-'));checkedPages++;
@@ -25,7 +27,7 @@ try{
     }
     await page.locator('#new-training').click();await page.locator('[data-topic="Управление временем"]').click();await page.locator('[data-scenario="TM01"]').waitFor();
     const face=await page.locator('[data-scenario="TM01"] img').getAttribute('src');await page.screenshot({path:`../.work/ui-avatars/${gender}-selection.png`,fullPage:true});
-    await page.locator('[data-scenario="TM01"]').click();assert.equal(await page.locator('#detail-character-avatar img').getAttribute('src'),face);await checkUnique();
+    await page.locator('[data-scenario="TM01"]').click();assert.equal(await page.locator('#detail-character-avatar img').getAttribute('src'),face);assert.match(await page.locator('#detail-user-avatar img').getAttribute('src'),new RegExp('/'+gender+'-'));assert.equal(await page.locator('.run-mode,#mode-ai,#mode-demo,#start-note').count(),0);await checkUnique();
     await page.locator('#start-session').click();await page.locator('#chat-view').waitFor({state:'visible'});assert.equal(await page.locator('#person-avatar img').getAttribute('src'),face);
     await page.locator('#message-input').fill('К какому сроку нужна задача?');await page.locator('#send-message').click();await page.waitForFunction(()=>!document.querySelector('#message-input').disabled&&document.querySelectorAll('.score-card').length===1);
     await checkUnique();assert.equal(await page.locator('#messages img,#messages .avatar').count(),0);

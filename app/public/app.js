@@ -1,5 +1,5 @@
 import {createWorkspaceUI} from '/workspace.js';
-import {accountPortrait,avatarGender,avatarInitials,portraitFiles,scenarioPortraitPages} from '/avatars.js';
+import {accountPortrait,alternatePortrait,avatarGender,characterGender,portraitFiles,scenarioPortraitPages} from '/avatars.js';
 const $=id=>document.getElementById(id);
 let workspaceUI;
 const state={catalog:null,topic:'',profile:null,scenario:null,scenarios:[],mode:'demo',session:null,busy:false,csrf:'',connection:null,optionIndex:-1,options:[],pending:null,setupStage:1};
@@ -38,14 +38,10 @@ function busy(value){state.busy=value;document.body.classList.toggle('busy',valu
 function showView(name){for(const id of ['setup','chat','result','history','leaderboard','analytics'])if($(id+'-view'))$(id+'-view').hidden=id!==name;$('new-training').classList.toggle('active',['setup','chat'].includes(name));$('show-result').classList.toggle('active',name==='result');for(const id of ['history','leaderboard','analytics'])$('nav-'+id)?.classList.toggle('active',id===name);workspaceUI?.activate(name);window.scrollTo({top:0,behavior:'smooth'});}
 function updateBadge(){$('settings-open').classList.toggle('connected',Boolean(state.connection?.configured));$('connection-caption').textContent=state.connection?.configured?state.connection.model:'Ключ не добавлен';}
 function setRunMode(mode){
-  state.mode=mode==='ai'&&!state.connection?.configured?'demo':mode;
-  for(const value of ['demo','ai']){$('mode-'+value).classList.toggle('selected',state.mode===value);$('mode-'+value).setAttribute('aria-pressed',String(state.mode===value));}
-  $('mode-ai').disabled=!state.connection?.configured;
-  $('mode-ai').title=state.connection?.configured?'Диалог и оценка с ИИ':'ИИ пока не подключен';
-  $('start-session').replaceChildren(document.createTextNode(state.mode==='demo'?'Начать разговор':'Начать разговор с ИИ'),uiIcon('arrow'));
-  $('start-note').textContent=state.mode==='demo'?'Ответы по шаблону. Оценки условные.':'Живые ответы ИИ. Разбор — после разговора.';
+  state.mode=state.hosted?'ai':mode==='ai'&&!state.connection?.configured?'demo':mode;
+  $('start-session').replaceChildren(document.createTextNode('Начать разговор'),uiIcon('arrow'));
   $('setup-mode-notice').hidden=Boolean(state.connection?.configured);
-  $('setup-mode-notice').textContent=state.connection?.configured?'':'Сейчас доступен режим по сценарию. Оценки условные.';
+  $('setup-mode-notice').textContent=state.connection?.configured?'':state.hosted?'Тренировки пока недоступны. Обратитесь к организатору.':'Локальная демонстрация: ответы по сценарию, оценки условные.';
   updateBadge();
 }
 function setSetupStage(stage,{focus=true}={}){
@@ -83,19 +79,20 @@ function renderDescription(node,text){
   const sentences=String(text||'').split(/\n+/).flatMap(line=>[...segmenter.segment(line)].map(item=>item.segment.trim())).filter(Boolean);
   node.replaceChildren(...sentences.map(sentence=>el('span','sentence-line',sentence)));
 }
-function chooseScenario(s){state.scenario=s;renderScenarios();$('scenario-detail').hidden=false;$('detail-role').textContent=state.catalog.employeePosition||state.profile.title;$('detail-character').textContent=s.character;$('detail-title').textContent=s.title;renderDescription($('detail-brief'),s.brief);$('detail-user-name').textContent=employeeName();$('detail-character-avatar').replaceChildren(portrait(s.character));stepper();$('scenario-detail').scrollIntoView({behavior:'smooth',block:'start'});}
+function chooseScenario(s){state.scenario=s;renderScenarios();$('scenario-detail').hidden=false;$('detail-role').textContent=state.catalog.employeePosition||state.profile.title;$('detail-character').textContent=s.character;$('detail-title').textContent=s.title;renderDescription($('detail-brief'),s.brief);$('detail-user-name').textContent=employeeName();$('detail-character-avatar').replaceChildren(portrait(s.character));const name=state.employee?.fullName||'Участник',gender=avatarGender(name,state.employee?.gender);$('detail-user-avatar').replaceChildren(portraitNode(alternatePortrait(name,gender,[employeePortrait,characterPortraits.get(s.character)]),name,false,gender));stepper();$('scenario-detail').scrollIntoView({behavior:'smooth',block:'start'});}
 function acceptSession(session){state.session=session;sessionStorage.setItem('nt-current-session',session.id);updateBadge();$('show-result').disabled=!session.report;}
 async function startSession(){
   if(state.busy)return;if(!state.topic||!state.profile||!state.scenario)return toast('Выберите тему и ситуацию');
-  if(state.mode==='ai'&&!state.connection.configured){openSettings();return;}
+  if(state.hosted)state.mode='ai';
+  if(state.mode==='ai'&&!state.connection.configured){if(state.hosted)toast('Тренировки пока недоступны. Обратитесь к организатору.');else openSettings();return;}
   busy(true);try{const s=await api('sessions',{topic:state.topic,profileId:state.profile.id,scenarioId:state.scenario.id,mode:state.mode,difficulty:'начальный'});acceptSession(s);$('message-input').value='';state.pending=null;renderChat();showView('chat');if(!matchMedia('(max-width:680px)').matches)$('message-input').focus({preventScroll:true});}catch(error){toast(error.message);}finally{busy(false);}
 }
 
 function portraitNode(src,name,small=false,gender=null){
-  const node=src?el('img'):el('span','',avatarInitials(name));
-  node.className=(small?'portrait-small':'portrait')+(src?'':' portrait-neutral');
-  node.setAttribute('aria-hidden','true');node.dataset.avatarGender=gender||'neutral';
-  if(src){node.src=src;node.alt='';node.width=small?36:100;node.height=small?36:100;node.decoding='async';}
+  const node=el('img'),source=portraitFiles.includes(src)?src:accountPortrait(name,gender);
+  node.className=small?'portrait-small':'portrait';
+  node.setAttribute('aria-hidden','true');node.dataset.avatarGender=source.includes('/female-')?'female':'male';
+  node.src=source;node.alt='';node.width=small?36:100;node.height=small?36:100;node.decoding='async';
   return node;
 }
 function renderAccountPortrait(){
@@ -103,10 +100,10 @@ function renderAccountPortrait(){
   $('employee-top-avatar').replaceChildren(portraitNode(employeePortrait,state.employee?.fullName||'Вы',true,avatarGender(state.employee?.fullName,state.employee?.gender)));
 }
 function portrait(character,small=false){
-  const gender=avatarGender(character);
+  const gender=characterGender(character);
   if(!characterPortraits.has(character)){
     let saved;try{saved=JSON.parse(sessionStorage.getItem('nt-character-avatar'));}catch{}
-    const valid=saved&&state.session&&saved.sessionId===state.session.id&&(saved.src===null&&!gender||portraitFiles.includes(saved.src)&&saved.src!==employeePortrait&&saved.src.startsWith('/avatars/'+gender+'-'));
+    const valid=saved&&state.session&&saved.sessionId===state.session.id&&portraitFiles.includes(saved.src)&&saved.src!==employeePortrait&&saved.src.startsWith('/avatars/'+gender+'-');
     const src=valid?saved.src:scenarioPortraitPages([{character}],employeePortrait)[0][0].src;
     characterPortraits.set(character,src);
   }
@@ -142,7 +139,7 @@ function openSettings(){const c=state.connection;$('api-base').value=c?.base||'h
 async function saveSettings({close=false}={}){const data=await api('settings',{base:$('api-base').value.trim(),model:$('api-model').value.trim(),style:$('api-style').value,key:$('api-key').value});state.connection=data;$('api-key').value='';$('key-status').textContent=data.configured?'Ключ задан на сервере.':'';if(data.configured&&!state.session)setRunMode('ai');updateBadge();if(close)$('settings-dialog').close();return data;}
 function newTraining(){if(state.busy)return toast('Дождитесь завершения запроса');state.setupStage=1;state.topic='';resetProfile();document.querySelectorAll('[data-topic]').forEach(b=>b.setAttribute('aria-pressed','false'));state.session=null;sessionStorage.removeItem('nt-current-session');$('show-result').disabled=true;showView('setup');updateBadge();}
 document.querySelectorAll('[data-topic]').forEach(button=>button.addEventListener('click',async()=>{if(state.busy)return;state.topic=button.dataset.topic;document.querySelectorAll('[data-topic]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));resetProfile();await loadScenarios();}));
-$('mode-demo').addEventListener('click',()=>setRunMode('demo'));$('mode-ai').addEventListener('click',()=>setRunMode('ai'));$('start-session').addEventListener('click',startSession);$('message-form').addEventListener('submit',sendMessage);$('message-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();$('message-form').requestSubmit();}});$('hint-button').addEventListener('click',hint);$('finish-session').addEventListener('click',finishSession);$('reflection-form').addEventListener('submit',makePlan);$('download-result').addEventListener('click',download);$('new-training').addEventListener('click',newTraining);$('another-session').addEventListener('click',newTraining);$('show-result').addEventListener('click',()=>{if(state.session?.report){renderResult();showView('result');}});$('retry-session').addEventListener('click',async()=>{const old=state.session;newTraining();state.topic=old.scenario.topic;state.profile=state.catalog.profiles.find(p=>p.id===old.profile.id);state.scenario=old.scenario;state.mode=old.mode;await startSession();});
+$('start-session').addEventListener('click',startSession);$('message-form').addEventListener('submit',sendMessage);$('message-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();$('message-form').requestSubmit();}});$('hint-button').addEventListener('click',hint);$('finish-session').addEventListener('click',finishSession);$('reflection-form').addEventListener('submit',makePlan);$('download-result').addEventListener('click',download);$('new-training').addEventListener('click',newTraining);$('another-session').addEventListener('click',newTraining);$('show-result').addEventListener('click',()=>{if(state.session?.report){renderResult();showView('result');}});$('retry-session').addEventListener('click',async()=>{const old=state.session;newTraining();state.topic=old.scenario.topic;state.profile=state.catalog.profiles.find(p=>p.id===old.profile.id);state.scenario=old.scenario;state.mode=old.mode;await startSession();});
 $('settings-open').addEventListener('click',openSettings);$('settings-close').addEventListener('click',()=>$('settings-dialog').close());$('settings-form').addEventListener('submit',async event=>{event.preventDefault();$('save-settings').disabled=true;try{await saveSettings({close:true});toast('Подключение сохранено для новых тренировок');}catch(error){toast(error.message);}finally{$('save-settings').disabled=false;}});$('test-connection').addEventListener('click',async()=>{const b=$('test-connection');b.disabled=true;$('connection-result').classList.remove('error');$('connection-result').textContent='Проверяю соединение…';try{await saveSettings();await api('connection',{});$('connection-result').textContent='Соединение установлено. Можно начать тренировку с ИИ.';}catch(error){$('connection-result').classList.add('error');$('connection-result').textContent=error.message;}finally{b.disabled=false;}});
 async function init(){try{const access=await api('auth/status');state.csrf=access.csrf;state.employee=access.employee;$('access-loading').hidden=true;document.body.classList.remove('auth-checking');if(access.required&&!access.employee){showLogin(access.configured?'':'Список сотрудников еще не загружен. Организатору нужно настроить доступ.');$('login-submit').disabled=!access.configured;return;}$('login-view').hidden=true;document.body.classList.remove('auth-locked');$('employee-account').hidden=!access.employee;$('signed-in-name').textContent=employeeName();$('employee-top-name').textContent=employeeName();renderAccountPortrait();state.catalog=await api('bootstrap');state.profile=state.catalog.employeeProfile||null;$('employee-role').textContent=state.profile?'Ваша должность: '+(state.catalog.employeePosition||state.profile.title)+(state.catalog.profileMatch&&state.catalog.profileMatch!=='exact'?' · Профиль оценки: '+state.profile.title:''):'';$('employee-role').hidden=!state.profile;if(!state.profile)toast('Для вашей должности пока не настроен профиль оценки. Обратитесь к организатору.');state.csrf=state.catalog.csrf;state.connection=state.catalog.connection;state.hosted=Boolean(state.catalog.hosting?.managed);setRunMode(state.connection.configured?'ai':'demo');const saved=sessionStorage.getItem('nt-current-session');if(saved){try{const s=await api('sessions/'+saved);acceptSession(s);if(s.report){renderResult();showView('result');}else{renderChat();showView('chat');}}catch{sessionStorage.removeItem('nt-current-session');}}workspaceUI?.ready();}catch(error){$('access-loading').hidden=true;document.body.classList.remove('auth-checking');showLogin(error.message);toast(location.protocol==='file:'?'Откройте «Запустить Нейротренер.cmd», затем http://127.0.0.1:8765. Для работы с ИИ нужен локальный сервер.':error.message);}}
 $('change-scenario').addEventListener('click',()=>{state.scenario=null;$('scenario-detail').hidden=true;renderScenarios();setSetupStage(3);});

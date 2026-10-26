@@ -16,7 +16,7 @@ await page.goto(process.env.TRAINER_TEST_URL||'http://127.0.0.1:'+app.server.add
 await page.waitForFunction(()=>document.querySelector('#connection-caption').textContent==='Ключ не добавлен');
 assert.equal(await page.locator('#position-section,#difficulty').count(),0);
 assert(await page.locator('#scenario-section').isHidden());
-assert(await page.locator('#mode-ai').isDisabled());
+assert.equal(await page.locator('#mode-ai,#mode-demo,.run-mode').count(),0);
 await page.screenshot({path:'../.work/ui/01-desktop.png',fullPage:true});
 await page.getByRole('button',{name:/Управление временем/}).click();
 await page.locator('#scenario-section').waitFor({state:'visible'});
@@ -26,6 +26,7 @@ assert(await page.locator('#topic-section').isVisible());
 await page.locator('#goto-scenario').click();
 await page.locator('[data-scenario="TM01"]').click();
 assert.equal(await page.locator('#detail-character-avatar img').count(),1);
+assert.equal(await page.locator('#detail-user-avatar img').count(),1);
 assert.equal(await page.locator('#employee-top-avatar .portrait-small').count(),1);
 await page.waitForFunction(()=>[...document.querySelectorAll('#detail-character-avatar img')].every(img=>img.complete&&img.naturalWidth>0));
 assert.equal(await page.locator('#detail-brief .sentence-line').count(),4);
