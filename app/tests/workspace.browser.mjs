@@ -16,6 +16,7 @@ try{
   await mkdir('../.work/ui-workspace',{recursive:true});
   await page.goto(base+'/#/rating');await page.locator('#login-full-name').fill('Участников Тест');await page.locator('#login-submit').click();
   await page.locator('#leaderboard-view').waitFor({state:'visible'});await page.getByRole('heading',{name:'Пока нет завершенных тренировок с ИИ'}).waitFor();
+  assert.equal(await page.locator('#sidebar-toggle').getAttribute('aria-expanded'),'false');await page.locator('#sidebar-toggle').click();assert.equal(await page.locator('#sidebar-toggle').getAttribute('aria-expanded'),'true');await page.reload();await page.locator('#leaderboard-view').waitFor({state:'visible'});assert.equal(await page.locator('#sidebar-toggle').getAttribute('aria-expanded'),'false');await page.locator('#sidebar-toggle').click();
   await page.locator('#nav-analytics').click();await page.locator('#analytics-code').waitFor();assert(await page.locator('.ws-stats').count()===0);
   await page.locator('#analytics-code').fill(analyticsCode(secret));await page.getByRole('button',{name:'Открыть аналитику'}).click();await page.locator('.ws-stats').waitFor();
   await page.locator('#new-training').click();await page.locator('[data-topic="Управление временем"]').click();await page.locator('[data-scenario="TM01"]').click();

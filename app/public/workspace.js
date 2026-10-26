@@ -10,14 +10,14 @@ export function createWorkspaceUI({api,state,el,showView,newTraining,toast}) {
   $('new-training').querySelector('.nav-icon').replaceChildren(icon('plus'));
   $('show-result').querySelector('.nav-icon').replaceChildren(icon('report'));
   let requestedRoute=location.hash;
-  let collapsed=false;try{collapsed=localStorage.getItem('nt-sidebar-collapsed')==='true';}catch{}
+  let collapsed=true;
   const narrow=matchMedia('(max-width:960px)'),toggle=$('sidebar-toggle'),sidebar=document.querySelector('.sidebar');let mobileOpen=false;
   sidebar.id='main-sidebar';toggle.setAttribute('aria-controls',sidebar.id);toggle.replaceChildren(icon('collapse'));toggle.querySelector('path').setAttribute('d','m14 6-6 6 6 6');document.body.append(toggle);
   const backdrop=el('button','sidebar-backdrop');backdrop.id='sidebar-backdrop';backdrop.type='button';backdrop.setAttribute('aria-label','Закрыть меню');backdrop.hidden=true;document.body.append(backdrop);
   const tooltip=el('div','sidebar-tooltip');tooltip.id='sidebar-tooltip';tooltip.role='tooltip';tooltip.hidden=true;document.body.append(tooltip);
   function hideTip(){tooltip.hidden=true;sidebar.querySelector('[aria-describedby="sidebar-tooltip"]')?.removeAttribute('aria-describedby');}
   function collapse(){const expanded=narrow.matches?mobileOpen:!collapsed;document.body.classList.toggle('sidebar-collapsed',collapsed);document.body.classList.toggle('sidebar-mobile-open',narrow.matches&&mobileOpen);toggle.classList.toggle('is-collapsed',!expanded);toggle.setAttribute('aria-expanded',String(expanded));toggle.title=expanded?'Свернуть меню':'Развернуть меню';toggle.setAttribute('aria-label',toggle.title);backdrop.hidden=!(narrow.matches&&mobileOpen);hideTip();}
-  collapse();toggle.onclick=()=>{if(narrow.matches)mobileOpen=!mobileOpen;else{collapsed=!collapsed;try{localStorage.setItem('nt-sidebar-collapsed',String(collapsed));}catch{}}collapse();};
+  collapse();toggle.onclick=()=>{if(narrow.matches)mobileOpen=!mobileOpen;else collapsed=!collapsed;collapse();};
   const closeMobile=()=>{mobileOpen=false;collapse();};backdrop.onclick=closeMobile;narrow.addEventListener('change',closeMobile);
   document.addEventListener('keydown',event=>{if(event.key==='Escape'){hideTip();if(mobileOpen){closeMobile();toggle.focus();}}});
   sidebar.addEventListener('click',event=>{hideTip();if(narrow.matches&&event.target.closest('button,a'))closeMobile();});
