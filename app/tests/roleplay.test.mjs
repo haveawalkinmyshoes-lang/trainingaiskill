@@ -32,7 +32,7 @@ test('Персонаж получает одну попытку исправле
     grades++;return {scores:input.competencies.map(c=>({id:c.id,score:null,quote:'',reason:'Недостаточно данных'}))};
   });
   const v=trainer.start('test',{topic:'SMART',profileId:'ROLE_158',scenarioId:'S07',mode:'ai'},{key:'fixture'}),s=trainer.get(v.id,'test');const input='Да, запускай. Первый отчет через неделю.';
-  await trainer.turn(s,input,'turn-1');assert.equal(actors,2);assert.equal(grades,1);assert.equal(s.steps.length,1);assert(s.complete);assert(!s.history.some(m=>m.text.includes('поддержу вас')));
+  await trainer.turn(s,input,'turn-1');assert.equal(actors,2);assert.equal(grades,1);assert.equal(s.steps.length,1);assert(!s.complete,'Исправление роли не подтверждает отсутствующие условия пилота');assert(!s.history.some(m=>m.text.includes('поддержу вас')));
   await trainer.turn(s,input,'turn-1');assert.equal(actors,2);assert.equal(grades,1);
 });
 test('Повторная подмена роли отклоняется без записи реплики и оценки',async()=>{

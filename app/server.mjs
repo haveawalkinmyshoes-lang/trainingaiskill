@@ -57,7 +57,7 @@ export async function createApp(options={}){
   const bridge=createAdminBridge({settings:adminConfig,library,trainer,
     runAudit:args=>{audit??=new ScenarioAudit(library,connection,call);return audit.run(args);},
     status:()=>({ok:true,revision:process.env.RENDER_GIT_COMMIT||'local',hosting:hosted?'production':'local',
-      topics:library.config.ui.topic_selector.options,scenarioCount:library.config.scenarios.length,profileCount:library.config.job_profiles.length,
+      topics:library.config.ui.topic_selector.options,scenarioCount:library.config.scenarios.length,profileCount:library.config.job_profiles.length,scenarioRevision:library.config.scenario_revision||'2.0',learningCriteriaCount:library.config.scenarios.reduce((n,s)=>n+(s.learning_rubric?.length||0),0),
       ai:{configured:Boolean(connection.key),model:connection.model,style:connection.style,callsInCurrentWindow:aiCalls,windowStartedAt:new Date(usageStart).toISOString(),limitPerDay:Number(process.env.MAX_AI_CALLS_PER_DAY||200),lastFailure:lastAIFailure,lastSuccessAt:lastAISuccessAt},
       access:{required:access.required,allowlistConfigured:access.people.size>0,codeVerification,bitrixConfigured:Boolean(sendCode)},
       dataStorage:'in_memory_reset_on_restart'}),

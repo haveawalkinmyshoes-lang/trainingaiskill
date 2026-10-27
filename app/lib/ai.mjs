@@ -18,12 +18,14 @@ export const scoreRow = (ids,quotes) => {
 };
 export const schemas = {
   actor:object({reply:string,stageIds:array({type:'integer',enum:[1,2,3,4,5]}),complete:{type:'boolean'}}),
-  grade:(ids,quotes)=>object({scores:array(scoreRow(ids,quotes))}),
-  final:(ids,quotes)=>object({scores:array(scoreRow(ids,quotes)),summary:string,strengths:array(object({text:string,quote:quotes?.length?{type:'string',enum:quotes}:string})),growth:string,outcome:{enum:['achieved','partial','not_achieved']}}),
+  actorFor:(requirements,quotes,warmupItem)=>object({reply:string,stageIds:array({type:'integer',enum:[1,2,3,4,5]}),complete:{type:'boolean'},conditions:array(object({id:{type:'string',enum:requirements.map(c=>c.id)},state:{enum:['open','confirmed']},quote:{type:'string',enum:['',...quotes]}})),...(warmupItem?{itemDecision:object({item:{type:'integer',enum:[warmupItem]},verdict:{enum:['needs_revision','accepted','skipped']}})}:{})}),
+  grade:(ids,quotes,criteria)=>object({scores:array(scoreRow(ids,quotes)),...(criteria?.length?{learning:learningRows(criteria,quotes)}:{})}),
+  final:(ids,quotes,criteria)=>object({scores:array(scoreRow(ids,quotes)),...(criteria?.length?{learning:learningRows(criteria,quotes)}:{}),summary:string,strengths:array(object({text:string,quote:quotes?.length?{type:'string',enum:quotes}:string})),growth:string,outcome:{enum:['achieved','partial','not_achieved']}}),
   plan:ids=>object({focusIds:array({type:'integer',enum:ids}),goal:string,weeks:array(object({action:string,proof:string})),completion:string}),
   hint:object({text:string}),
   connection:object({ok:{type:'boolean'}})
 };
+function learningRows(criteria,quotes){return array(object({id:{type:'string',enum:criteria.map(c=>c.id)},score,quote:quotes?.length?{type:'string',enum:['',...quotes]}:string,reason:string,source:{enum:['independent','prompted','unobserved']}}));}
 export async function structuredCall(connection, instruction, data, schema, name, fetchImpl=fetch, transport={}) {
   if (!connection.key) throw apiFailure('Подключите ИИ в настройках: нужен API-ключ','not_configured');
   const format = {type:'json_schema',name,strict:true,schema};
