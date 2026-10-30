@@ -12,9 +12,5 @@ body #sidebar-toggle,.sidebar-collapsed #sidebar-toggle{position:fixed;top:29px;
 @media(prefers-reduced-motion:reduce){.sidebar,main,body #sidebar-toggle,#sidebar-toggle svg{transition:none!important}}
 @media(max-width:960px){main{transition:none}}
 
-/* Authentication screens must override every desktop, collapsed and mobile menu state. */
-body.auth-checking .sidebar,body.auth-locked .sidebar,
-body.auth-checking main,body.auth-locked main,
-body.auth-checking #sidebar-toggle,body.auth-locked #sidebar-toggle,
-body.auth-checking .sidebar-backdrop,body.auth-locked .sidebar-backdrop,
-body.auth-checking .sidebar-tooltip,body.auth-locked .sidebar-tooltip{display:none!important}
+/* Keep the previous desktop rules; only override the mobile sidebar display. */
+@media(max-width:960px){body.auth-checking>.sidebar,body.auth-locked>.sidebar{display:none!important}}
