@@ -11,3 +11,10 @@ body #sidebar-toggle,.sidebar-collapsed #sidebar-toggle{position:fixed;top:29px;
 @media(max-width:960px){body #sidebar-toggle,.sidebar-collapsed #sidebar-toggle{left:48px;top:26px;width:32px;height:32px}.sidebar .nav-item,.sidebar-collapsed .sidebar .nav-item{width:44px;margin:3px 10px;padding:12px;min-height:46px}.sidebar .connection-dot{display:none}.sidebar-mobile-open .sidebar{width:240px;z-index:52;box-shadow:12px 0 35px #1b41541a}.sidebar-mobile-open #sidebar-toggle{left:224px}.sidebar-mobile-open .sidebar .brand{justify-content:flex-start;padding:24px 20px}.sidebar-mobile-open .sidebar .brand>span:last-child,.sidebar-mobile-open .sidebar .nav-label,.sidebar-mobile-open .sidebar .nav-group-label,.sidebar-mobile-open .sidebar #signed-in-name,.sidebar-mobile-open .sidebar .connection-button>span:last-child{display:block!important}.sidebar-mobile-open .sidebar .nav-item{width:calc(100% - 24px);margin:3px 12px;padding:13px 14px;justify-content:flex-start}.sidebar-mobile-open .sidebar .sidebar-bottom{padding:14px}.sidebar-mobile-open .sidebar .employee-account{padding:0 9px 12px}.sidebar-mobile-open .sidebar .connection-button{justify-content:flex-start}.sidebar-mobile-open .sidebar .brand-caption{display:block}.sidebar-mobile-open .sidebar #sign-out{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.sidebar,main,body #sidebar-toggle,#sidebar-toggle svg{transition:none!important}}
 @media(max-width:960px){main{transition:none}}
+
+/* Authentication screens must override every desktop, collapsed and mobile menu state. */
+body.auth-checking .sidebar,body.auth-locked .sidebar,
+body.auth-checking main,body.auth-locked main,
+body.auth-checking #sidebar-toggle,body.auth-locked #sidebar-toggle,
+body.auth-checking .sidebar-backdrop,body.auth-locked .sidebar-backdrop,
+body.auth-checking .sidebar-tooltip,body.auth-locked .sidebar-tooltip{display:none!important}
