@@ -195,7 +195,7 @@ export async function createApp(options={}){
         throw httpError('Маршрут не найден',404);
       }
       const assets={'/':['index.html','text/html'],'/index.html':['index.html','text/html'],'/app.js':['app.js','text/javascript'],'/styles.css':['styles.css','text/css'],'/favicon.svg':['favicon.svg','image/svg+xml']};
-      assets['/workspace.js']=['workspace.js','text/javascript'];assets['/workspace.css']=['workspace.css','text/css'];assets['/avatars.js']=['avatars.js','text/javascript'];
+      assets['/workspace.js']=['workspace.js','text/javascript'];assets['/workspace.css']=['workspace.css','text/css'];assets['/avatars.js']=['avatars.js','text/javascript'];assets['/api.js']=['api.js','text/javascript'];
       // Only the eight packaged portraits are public; no arbitrary file paths.
       for(const gender of ['female','male'])for(let i=1;i<=4;i++){const name=gender+'-0'+i+'.webp';assets['/avatars/'+name]=['avatars/'+name,'image/webp'];}
       if(req.method!=='GET'&&req.method!=='HEAD')throw httpError('Метод не поддерживается',405);

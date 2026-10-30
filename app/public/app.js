@@ -1,4 +1,5 @@
 import {createWorkspaceUI} from '/workspace.js';
+import {createApi} from '/api.js';
 import {accountPortrait,alternatePortrait,avatarGender,characterGender,portraitFiles,scenarioPortraitPages} from '/avatars.js';
 const $=id=>document.getElementById(id);
 let workspaceUI;
@@ -24,15 +25,10 @@ function decorateInterface(){
 }
 const norm=s=>s.normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru');
 function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').hidden=true,7500);}
-async function api(path,data,retried=false){
-  const response=await fetch('/api/'+path,{method:data===undefined?'GET':'POST',credentials:'same-origin',
-    headers:data===undefined?{}:{'Content-Type':'application/json','X-CSRF-Token':state.csrf},body:data===undefined?undefined:JSON.stringify(data)});
-  let value;try{value=await response.json();}catch{throw new Error('Нет ответа сервера. Запустите «Запустить Нейротренер.cmd».');}
-  if(!retried&&response.status===403&&path.startsWith('auth/')&&['Откройте приложение перед отправкой запроса','Обновите страницу: истек токен запроса'].includes(value.error)){
-    const fresh=await api('auth/status');state.csrf=fresh.csrf;return api(path,data,true);
-  }
-  if(!response.ok){if(response.status===401&&!path.startsWith('auth/'))showLogin('Сессия завершена. Войдите снова.');throw new Error(value.error||'Не удалось выполнить запрос');}return value;
-}
+const api=createApi({getCsrf:()=>state.csrf,setCsrf:value=>{state.csrf=value;},onExpired:({login,message})=>{
+  sessionStorage.removeItem('nt-current-session');state.pending=null;$('show-result').disabled=true;
+  if(login){codeScreen(false);showLogin(message);}else{showView('setup');setSetupStage(1,{focus:false});}
+}});
 
 function busy(value){state.busy=value;document.body.classList.toggle('busy',value);for(const id of ['start-session','send-message','finish-session','hint-button','make-plan','message-input','review-complete'])$(id).disabled=value;if(!value)document.querySelectorAll('.pending-message').forEach(n=>n.remove());}
 function showView(name){for(const id of ['setup','chat','result','history','leaderboard','analytics'])if($(id+'-view'))$(id+'-view').hidden=id!==name;$('new-training').classList.toggle('active',['setup','chat'].includes(name));$('show-result').classList.toggle('active',name==='result');for(const id of ['history','leaderboard','analytics'])$('nav-'+id)?.classList.toggle('active',id===name);workspaceUI?.activate(name);window.scrollTo({top:0,behavior:'smooth'});}
