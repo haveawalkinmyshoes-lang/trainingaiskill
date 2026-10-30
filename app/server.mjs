@@ -15,6 +15,7 @@ import {bridgeSettings,createAdminBridge} from './lib/admin-bridge.mjs';
 import {PracticeJournal} from './lib/practice-journal.mjs';
 import {checkRoleplay} from './lib/roleplay-check.mjs';
 import {ScenarioAudit} from './lib/scenario-audit.mjs';
+import {withStoredRoles} from './lib/stored-roles.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 function httpError(message,status=400){return Object.assign(new Error(message),{status});}
@@ -31,9 +32,13 @@ async function envFile(){
 }
 export async function createApp(options={}){
   const hosted=options.hosted??process.env.NODE_ENV==='production';
-  const access=new EmployeeAccess(options.employeeAllowlist??await loadEmployeeAllowlist(),{required:options.accessRequired??hosted});
-  const sendCode=options.sendCode??createBitrixLoginSender();
-  const codeVerification=options.codeVerification??(hosted||Boolean(sendCode)||process.env.AUTH_CODE_VERIFICATION==='true');
+  const adminConfig=options.bridgeSettings??await bridgeSettings();
+  const records=options.employeeAllowlist??await loadEmployeeAllowlist();
+  const access=new EmployeeAccess(await withStoredRoles(records,adminConfig.token),{required:options.accessRequired??hosted});
+  const authMode=options.authMode??process.env.AUTH_MODE??'allowlist';
+  if(!['allowlist','bitrix'].includes(authMode))throw new Error('AUTH_MODE должен быть allowlist или bitrix');
+  const codeVerification=options.codeVerification??(authMode==='bitrix');
+  const sendCode=codeVerification?(options.sendCode??createBitrixLoginSender()):null;
   const codes=new LoginCodes(sendCode);
   const bypassCode=options.codeBypass??codeException,lookupEmployee=options.lookupEmployee??sendCode?.lookupEmployee;
   const library=options.library||await loadLibrary(path.join(here,'..','02_Инструкция_модели_Нейротренера.md'));
@@ -51,7 +56,6 @@ export async function createApp(options={}){
     catch(error){lastAIFailure={at:new Date().toISOString(),...safeAIFailure(error)};throw error;}
   };
   const trainer=new Trainer(library,call),owners=new Map();
-  const adminConfig=options.bridgeSettings??await bridgeSettings();
   const journal=new PracticeJournal({secret:adminConfig.token,local:!hosted&&!access.required});
   let audit;
   const bridge=createAdminBridge({settings:adminConfig,library,trainer,
@@ -59,7 +63,7 @@ export async function createApp(options={}){
     status:()=>({ok:true,revision:process.env.RENDER_GIT_COMMIT||'local',hosting:hosted?'production':'local',
       topics:library.config.ui.topic_selector.options,scenarioCount:library.config.scenarios.length,profileCount:library.config.job_profiles.length,scenarioRevision:library.config.scenario_revision||'2.0',learningCriteriaCount:library.config.scenarios.reduce((n,s)=>n+(s.learning_rubric?.length||0),0),
       ai:{configured:Boolean(connection.key),model:connection.model,style:connection.style,callsInCurrentWindow:aiCalls,windowStartedAt:new Date(usageStart).toISOString(),limitPerDay:Number(process.env.MAX_AI_CALLS_PER_DAY||200),lastFailure:lastAIFailure,lastSuccessAt:lastAISuccessAt},
-      access:{required:access.required,allowlistConfigured:access.people.size>0,codeVerification,bitrixConfigured:Boolean(sendCode)},
+      access:{required:access.required,allowlistConfigured:access.people.size>0,codeVerification,bitrixConfigured:Boolean(sendCode),profilesConfigured:[...access.people.values()].filter(p=>resolveEmployeeProfile(library.config,p)).length},
       dataStorage:'in_memory_reset_on_restart'}),
     checkAI:async(args={})=>{const tested={...connection,...(args.model?{model:args.model}:{})};if(args.roleplay)return checkRoleplay(library,tested,call);const result=await call(tested,'Верни JSON {"ok":true}. Это проверка соединения.',{},schemas.connection,'trainer_bridge_connection');if(result.ok!==true)throw httpError('ИИ не подтвердил соединение',502);return {ok:true,model:tested.model};},
     ...(options.bridgeFetch?{fetchImpl:options.bridgeFetch}:{})});

@@ -14,7 +14,7 @@ try{
   const page=await browser.newPage({viewport:{width:1440,height:1050}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   const origin='http://127.0.0.1:'+app.server.address().port;
   await page.goto(origin);await page.locator('#login-view').waitFor({state:'visible'});
-  assert.equal(await page.locator('.login-steps li').count(),3);
+  assert.equal(await page.locator('.login-steps li:visible').count(),3);
   await page.screenshot({path:'../.work/ui/12-bitrix-login.png',fullPage:true});
   let loginRequests=0;
   await page.route('**/api/auth/login',async route=>{if(++loginRequests===1)return route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({error:'Откройте приложение перед отправкой запроса'})});return route.continue();});

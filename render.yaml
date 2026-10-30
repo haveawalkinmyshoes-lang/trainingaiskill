@@ -9,6 +9,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: AUTH_MODE
+        value: allowlist
       - key: NODE_VERSION
         value: 24.19.0
       - key: OPENAI_API_KEY

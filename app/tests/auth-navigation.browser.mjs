@@ -15,7 +15,7 @@ try{
     await page.route('**/api/auth/status',async route=>{if(first){first=false;await statusGate;}await route.continue();});
     async function noNavigation(){for(const selector of ['.sidebar','#sidebar-toggle','.sidebar-backdrop','.sidebar-tooltip','main'])assert(await page.locator(selector).isHidden(),width+' '+selector+' must be hidden before authentication');}
     await page.goto(base+'/#/rating',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>document.querySelector('.sidebar-collapsed'));await noNavigation();
-    release();await page.locator('#login-view').waitFor({state:'visible'});await noNavigation();
+    release();await page.locator('#login-view').waitFor({state:'visible'});await noNavigation();assert(await page.locator('[data-login-step="delivery"]').isHidden());assert(await page.locator('[data-login-step="code"]').isHidden());assert(await page.locator('[data-login-step="access"]').isVisible());assert.equal(await page.locator('#login-submit').textContent(),'Войти');
     assert(await page.locator('.login-card').evaluate(n=>{const r=n.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}),'Login card must fit viewport');
     if(width===390)await page.screenshot({path:folder+'/mobile-login.png',fullPage:true});
     await page.locator('#login-full-name').fill('Проверочный Тест');await page.locator('#login-submit').click();await page.locator('main').waitFor({state:'visible'});assert(await page.locator('.sidebar').isVisible());
